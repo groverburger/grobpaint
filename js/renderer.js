@@ -99,7 +99,7 @@ export class Renderer {
     // Background: dark outside, checkerboard inside document area
     const bgCtx = this.bgCtx;
     bgCtx.clearRect(0, 0, vw, vh);
-    bgCtx.fillStyle = '#1a1a1a';
+    bgCtx.fillStyle = '#181b24';
     bgCtx.fillRect(0, 0, vw, vh);
 
     // Checkerboard for transparency
