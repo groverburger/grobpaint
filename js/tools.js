@@ -472,8 +472,8 @@ export class LineTool extends Tool {
       ctx.lineWidth = bus._brushSize;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(this._startX, this._startY);
-      ctx.lineTo(this._endX, this._endY);
+      ctx.moveTo(Math.round(this._startX), Math.round(this._startY));
+      ctx.lineTo(Math.round(this._endX), Math.round(this._endY));
       ctx.stroke();
     }
     ctx.restore();
@@ -496,12 +496,14 @@ export class LineTool extends Tool {
         ctx.fillRect((lx - r) * z + doc.panX, (ly - r) * z + doc.panY, size * z, size * z);
       });
     } else {
+      const sx = Math.round(this._startX), sy = Math.round(this._startY);
+      const ex = Math.round(this._endX), ey = Math.round(this._endY);
       ctx.strokeStyle = color;
       ctx.lineWidth = bus._brushSize * doc.zoom;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(this._startX * doc.zoom + doc.panX, this._startY * doc.zoom + doc.panY);
-      ctx.lineTo(this._endX * doc.zoom + doc.panX, this._endY * doc.zoom + doc.panY);
+      ctx.moveTo(sx * doc.zoom + doc.panX, sy * doc.zoom + doc.panY);
+      ctx.lineTo(ex * doc.zoom + doc.panX, ey * doc.zoom + doc.panY);
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -580,10 +582,10 @@ export class RectangleTool extends Tool {
     if (!this._drawing) return;
     const color = this._button === 2 ? bus._secondaryColor : bus._primaryColor;
     const z = doc.zoom;
-    const rx = Math.min(this._startX, this._endX) * z + doc.panX;
-    const ry = Math.min(this._startY, this._endY) * z + doc.panY;
-    const rw = Math.abs(this._endX - this._startX) * z;
-    const rh = Math.abs(this._endY - this._startY) * z;
+    const rx = Math.round(Math.min(this._startX, this._endX)) * z + doc.panX;
+    const ry = Math.round(Math.min(this._startY, this._endY)) * z + doc.panY;
+    const rw = Math.round(Math.abs(this._endX - this._startX)) * z;
+    const rh = Math.round(Math.abs(this._endY - this._startY)) * z;
     ctx.globalAlpha = 0.7;
     if (bus._filled) {
       ctx.fillStyle = color;
@@ -660,10 +662,12 @@ export class EllipseTool extends Tool {
     if (!this._drawing) return;
     const color = this._button === 2 ? bus._secondaryColor : bus._primaryColor;
     const z = doc.zoom;
-    const cx = ((this._startX + this._endX) / 2) * z + doc.panX;
-    const cy = ((this._startY + this._endY) / 2) * z + doc.panY;
-    const rx = (Math.abs(this._endX - this._startX) / 2) * z;
-    const ry = (Math.abs(this._endY - this._startY) / 2) * z;
+    const x0 = Math.round(this._startX), y0 = Math.round(this._startY);
+    const x1 = Math.round(this._endX), y1 = Math.round(this._endY);
+    const cx = ((x0 + x1) / 2) * z + doc.panX;
+    const cy = ((y0 + y1) / 2) * z + doc.panY;
+    const rx = (Math.abs(x1 - x0) / 2) * z;
+    const ry = (Math.abs(y1 - y0) / 2) * z;
     ctx.globalAlpha = 0.7;
     ctx.beginPath();
     ctx.ellipse(cx, cy, Math.max(rx, 0.5), Math.max(ry, 0.5), 0, 0, Math.PI * 2);
@@ -939,8 +943,8 @@ export class MoveTool extends Tool {
   onOverlay(ctx, doc) {
     if (!this._moving || !this._buffer) return;
     const z = doc.zoom;
-    const dx = (this._originX + this._offsetX) * z + doc.panX;
-    const dy = (this._originY + this._offsetY) * z + doc.panY;
+    const dx = Math.round(this._originX + this._offsetX) * z + doc.panX;
+    const dy = Math.round(this._originY + this._offsetY) * z + doc.panY;
     ctx.imageSmoothingEnabled = false;
     ctx.globalAlpha = 0.7;
     ctx.drawImage(this._buffer, dx, dy, this._buffer.width * z, this._buffer.height * z);
@@ -1109,6 +1113,162 @@ export class RotateTool extends Tool {
   }
 }
 
+// ===== Scale =====
+
+export class ScaleTool extends Tool {
+  constructor() {
+    super('Scale', '');
+    this._scaling = false;
+    this._buffer = null;
+    this._startX = 0;
+    this._startY = 0;
+    this._originX = 0;
+    this._originY = 0;
+    this._bufW = 0;
+    this._bufH = 0;
+    this._scaleX = 1;
+    this._scaleY = 1;
+  }
+
+  activate() {
+    document.getElementById('viewport').style.cursor = 'nwse-resize';
+  }
+
+  deactivate() {
+    document.getElementById('viewport').style.cursor = 'crosshair';
+    if (this._scaling) this._cancel();
+  }
+
+  _cancel() {
+    this._scaling = false;
+    this._buffer = null;
+  }
+
+  onPointerDown(doc, x, y, e) {
+    const layer = doc.activeLayer;
+    if (!layer || !layer.visible) return;
+    doc.saveDrawState();
+    this._scaling = true;
+    this._startX = x;
+    this._startY = y;
+    this._scaleX = 1;
+    this._scaleY = 1;
+
+    const sel = doc.selection;
+    if (sel.active && sel.bounds) {
+      const { x: sx, y: sy, w: sw, h: sh } = sel.bounds;
+      this._originX = sx;
+      this._originY = sy;
+      this._bufW = sw;
+      this._bufH = sh;
+
+      this._buffer = document.createElement('canvas');
+      this._buffer.width = sw;
+      this._buffer.height = sh;
+      const bctx = this._buffer.getContext('2d');
+      bctx.drawImage(layer.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+
+      if (sel.mask) {
+        const bufData = bctx.getImageData(0, 0, sw, sh);
+        const layerData = layer.ctx.getImageData(sx, sy, sw, sh);
+        const bd = bufData.data;
+        const ld = layerData.data;
+        for (let row = 0; row < sh; row++) {
+          for (let col = 0; col < sw; col++) {
+            const pi = (row * sw + col) * 4;
+            if (sel.isSelected(col + sx, row + sy)) {
+              ld[pi] = 0; ld[pi+1] = 0; ld[pi+2] = 0; ld[pi+3] = 0;
+            } else {
+              bd[pi] = 0; bd[pi+1] = 0; bd[pi+2] = 0; bd[pi+3] = 0;
+            }
+          }
+        }
+        bctx.putImageData(bufData, 0, 0);
+        layer.ctx.putImageData(layerData, sx, sy);
+      } else {
+        layer.ctx.clearRect(sx, sy, sw, sh);
+      }
+    } else {
+      this._originX = 0;
+      this._originY = 0;
+      this._bufW = doc.width;
+      this._bufH = doc.height;
+
+      this._buffer = document.createElement('canvas');
+      this._buffer.width = doc.width;
+      this._buffer.height = doc.height;
+      this._buffer.getContext('2d').drawImage(layer.canvas, 0, 0);
+      layer.clear();
+    }
+    bus.emit('canvas:dirty');
+  }
+
+  onPointerMove(doc, x, y, e) {
+    if (!this._scaling) return;
+    const dx = x - this._startX;
+    const dy = y - this._startY;
+    this._scaleX = Math.max(0.01, (this._bufW + dx) / this._bufW);
+    this._scaleY = Math.max(0.01, (this._bufH + dy) / this._bufH);
+    if (e.shiftKey) {
+      const s = Math.max(this._scaleX, this._scaleY);
+      this._scaleX = s;
+      this._scaleY = s;
+    }
+    bus.emit('canvas:dirty');
+  }
+
+  onPointerUp(doc) {
+    if (!this._scaling || !this._buffer) return;
+    this._scaling = false;
+
+    const layer = doc.activeLayer;
+    const ctx = layer.ctx;
+    const newW = Math.max(1, Math.round(this._bufW * this._scaleX));
+    const newH = Math.max(1, Math.round(this._bufH * this._scaleY));
+
+    const interp = bus._interpolation || 'nearest';
+    ctx.imageSmoothingEnabled = interp !== 'nearest';
+    if (interp === 'bicubic') ctx.imageSmoothingQuality = 'high';
+    else ctx.imageSmoothingQuality = 'low';
+
+    ctx.drawImage(this._buffer, this._originX, this._originY, newW, newH);
+    ctx.imageSmoothingEnabled = false;
+
+    if (doc.selection.active && doc.selection.bounds) {
+      doc.selection.setRect(this._originX, this._originY, newW, newH);
+    }
+
+    this._buffer = null;
+    bus.emit('canvas:dirty');
+  }
+
+  onOverlay(ctx, doc) {
+    if (!this._scaling || !this._buffer) return;
+    const z = doc.zoom;
+    const newW = Math.max(1, Math.round(this._bufW * this._scaleX));
+    const newH = Math.max(1, Math.round(this._bufH * this._scaleY));
+    const dx = this._originX * z + doc.panX;
+    const dy = this._originY * z + doc.panY;
+
+    const interp = bus._interpolation || 'nearest';
+    ctx.imageSmoothingEnabled = interp !== 'nearest';
+    if (interp === 'bicubic') ctx.imageSmoothingQuality = 'high';
+    else ctx.imageSmoothingQuality = 'low';
+
+    ctx.globalAlpha = 0.7;
+    ctx.drawImage(this._buffer, dx, dy, newW * z, newH * z);
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = 1;
+
+    // Size readout
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(dx + newW * z + 4, dy - 2, 80, 18);
+    ctx.fillStyle = 'white';
+    ctx.font = '11px sans-serif';
+    ctx.fillText(`${newW} x ${newH}`, dx + newW * z + 8, dy + 11);
+  }
+}
+
 // ===== Mirror =====
 
 export class MirrorTool extends Tool {
@@ -1147,7 +1307,7 @@ export class ToolManager {
       new FillTool(), new EyedropperTool(), new LineTool(),
       new RectangleTool(), new EllipseTool(), new TextTool(),
       new SelectRectTool(), new MagicWandTool(),
-      new MoveTool(), new RotateTool(), new MirrorTool(),
+      new MoveTool(), new RotateTool(), new ScaleTool(), new MirrorTool(),
     ];
     for (const t of all) this.tools[t.name.toLowerCase()] = t;
 

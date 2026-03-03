@@ -68,6 +68,9 @@
     <button class="tool-btn" data-tool="rotate" title="Rotate">
       <svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
     </button>
+    <button class="tool-btn" data-tool="scale" title="Scale">
+      <svg viewBox="0 0 24 24"><path d="M21 15l-6 6m6 0l-6-6M21 21h-6m6 0v-6" fill="none" stroke="currentColor" stroke-width="2"/><rect x="3" y="3" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="2 2"/></svg>
+    </button>
     <button class="tool-btn" data-tool="mirror" title="Mirror">
       <svg viewBox="0 0 24 24"><path d="M12 2v20" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="2 2"/><path d="M5 8L2 12l3 4M19 8l3 4-3 4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
     </button>
@@ -248,6 +251,41 @@
     <div class="dialog-buttons">
       <button id="cs-ok">Apply</button>
       <button id="cs-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Scale Image Dialog -->
+<div id="scale-image-overlay" class="hidden">
+  <div id="scale-image-dialog" class="dialog">
+    <h3>Scale Image</h3>
+    <div class="dialog-body">
+      <div class="dialog-row">
+        <label>Current:</label>
+        <span id="si-current">0 x 0</span>
+      </div>
+      <div class="dialog-row">
+        <label>Width:</label>
+        <input type="number" id="si-width" value="0" min="1" max="16384">
+        <label>Height:</label>
+        <input type="number" id="si-height" value="0" min="1" max="16384">
+      </div>
+      <div class="dialog-row">
+        <label></label>
+        <label class="si-checkbox-label"><input type="checkbox" id="si-lock" checked> Maintain aspect ratio</label>
+      </div>
+      <div class="dialog-row">
+        <label>Resample:</label>
+        <select id="si-interpolation">
+          <option value="nearest">Nearest Neighbor</option>
+          <option value="bilinear" selected>Bilinear</option>
+          <option value="bicubic">Bicubic</option>
+        </select>
+      </div>
+    </div>
+    <div class="dialog-buttons">
+      <button id="si-ok">Apply</button>
+      <button id="si-cancel">Cancel</button>
     </div>
   </div>
 </div>

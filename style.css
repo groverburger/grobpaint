@@ -456,7 +456,13 @@ body {
   justify-content: center;
   z-index: 2000;
 }
-#dialog-overlay.hidden, #canvas-size-overlay.hidden { display: none; }
+#dialog-overlay.hidden, #canvas-size-overlay.hidden, #scale-image-overlay.hidden { display: none; }
+#scale-image-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center; z-index: 2000;
+}
+.si-checkbox-label { display: flex; align-items: center; gap: 4px; width: auto !important; cursor: pointer; }
+.si-checkbox-label input { accent-color: var(--accent); }
 #canvas-size-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.5);
   display: flex; align-items: center; justify-content: center; z-index: 2000;

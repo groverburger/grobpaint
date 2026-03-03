@@ -579,6 +579,7 @@ export class ToolOptionsBar {
     bus._filled = false;
     bus._fontSize = 24;
     bus._fontFamily = 'Arial';
+    bus._interpolation = 'nearest';
 
     bus.on('tool:changed', name => this.render(name));
     this.render('pencil');
@@ -620,6 +621,19 @@ export class ToolOptionsBar {
           bus._tolerance = v;
           this.render(toolName);
         })));
+    }
+
+    // Interpolation (scale)
+    if (toolName === 'scale') {
+      const interpSelect = document.createElement('select');
+      for (const [val, label] of [['nearest', 'Nearest Neighbor'], ['bilinear', 'Bilinear'], ['bicubic', 'Bicubic']]) {
+        const opt = document.createElement('option');
+        opt.value = val; opt.textContent = label;
+        if (val === bus._interpolation) opt.selected = true;
+        interpSelect.appendChild(opt);
+      }
+      interpSelect.addEventListener('change', () => bus._interpolation = interpSelect.value);
+      bar.appendChild(this._group('Resample:', interpSelect));
     }
 
     // Mirror buttons
@@ -781,6 +795,7 @@ export class MenuBar {
         { label: 'Flip Horizontal', action: () => app.flipHorizontal() },
         { label: 'Flip Vertical', action: () => app.flipVertical() },
         { sep: true },
+        { label: 'Scale Image...', action: () => app.showScaleImageDialog() },
         { label: 'Canvas Size...', action: () => app.showCanvasSizeDialog() },
         { label: 'Crop to Selection', action: () => app.cropToSelection() },
         { sep: true },
@@ -924,6 +939,73 @@ export class CanvasSizeDialog {
     bus.emit('layers:changed');
     bus.emit('canvas:dirty');
     document.getElementById('status-size').textContent = `${doc.width} x ${doc.height}`;
+    this.hide();
+  }
+}
+
+// ===== Scale Image Dialog =====
+
+export class ScaleImageDialog {
+  constructor() {
+    this._doc = null;
+    this._aspect = 1;
+
+    const wInput = document.getElementById('si-width');
+    const hInput = document.getElementById('si-height');
+    const lock = document.getElementById('si-lock');
+
+    wInput.addEventListener('input', () => {
+      if (lock.checked && this._aspect) {
+        hInput.value = Math.round(parseInt(wInput.value) / this._aspect) || 1;
+      }
+    });
+    hInput.addEventListener('input', () => {
+      if (lock.checked && this._aspect) {
+        wInput.value = Math.round(parseInt(hInput.value) * this._aspect) || 1;
+      }
+    });
+
+    document.getElementById('si-ok').addEventListener('click', () => this._apply());
+    document.getElementById('si-cancel').addEventListener('click', () => this.hide());
+    document.getElementById('scale-image-dialog').addEventListener('keydown', e => {
+      if (e.key === 'Enter') this._apply();
+      if (e.key === 'Escape') this.hide();
+    });
+  }
+
+  show(doc) {
+    if (!doc) return;
+    this._doc = doc;
+    this._aspect = doc.width / doc.height;
+    document.getElementById('si-current').textContent = `${doc.width} x ${doc.height}`;
+    document.getElementById('si-width').value = doc.width;
+    document.getElementById('si-height').value = doc.height;
+    document.getElementById('scale-image-overlay').classList.remove('hidden');
+    document.getElementById('si-width').focus();
+  }
+
+  hide() {
+    document.getElementById('scale-image-overlay').classList.add('hidden');
+    document.activeElement?.blur();
+  }
+
+  _apply() {
+    const doc = this._doc;
+    if (!doc) return;
+    const newW = parseInt(document.getElementById('si-width').value) || doc.width;
+    const newH = parseInt(document.getElementById('si-height').value) || doc.height;
+    if (newW === doc.width && newH === doc.height) { this.hide(); return; }
+    const interp = document.getElementById('si-interpolation').value;
+
+    doc.saveStructureState();
+    doc.scaleImage(newW, newH, interp);
+    bus.emit('layers:changed');
+    bus.emit('canvas:dirty');
+    document.getElementById('status-size').textContent = `${doc.width} x ${doc.height}`;
+
+    const vp = document.getElementById('viewport').getBoundingClientRect();
+    doc.fitInView(vp.width, vp.height);
+    document.getElementById('status-zoom').textContent = Math.round(doc.zoom * 100) + '%';
     this.hide();
   }
 }

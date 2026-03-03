@@ -3,7 +3,7 @@
 import { bus } from './core.js';
 import { Renderer } from './renderer.js';
 import { ToolManager } from './tools.js';
-import { ColorSystem, LayersPanel, DocManager, ToolOptionsBar, MenuBar, NewImageDialog, CanvasSizeDialog } from './ui.js';
+import { ColorSystem, LayersPanel, DocManager, ToolOptionsBar, MenuBar, NewImageDialog, CanvasSizeDialog, ScaleImageDialog } from './ui.js';
 
 class App {
   constructor() {
@@ -21,6 +21,7 @@ class App {
     this.menuBar = new MenuBar(this);
     this.newDialog = new NewImageDialog();
     this.canvasSizeDialog = new CanvasSizeDialog();
+    this.scaleImageDialog = new ScaleImageDialog();
 
     // Create initial document
     this.docManager.createDoc(1280, 720, 'Untitled', 'white');
@@ -450,6 +451,11 @@ class App {
     const vp = document.getElementById('viewport').getBoundingClientRect();
     doc.fitInView(vp.width, vp.height);
     document.getElementById('status-zoom').textContent = Math.round(doc.zoom * 100) + '%';
+  }
+
+  showScaleImageDialog() {
+    if (!this.doc) return;
+    this.scaleImageDialog.show(this.doc);
   }
 
   showCanvasSizeDialog() {

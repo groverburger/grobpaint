@@ -346,6 +346,28 @@ export class PaintDocument {
     this.selection = new Selection(w, h);
   }
 
+  /** Scale entire image to new dimensions */
+  scaleImage(newW, newH, interpolation = 'bilinear') {
+    for (const layer of this.layers) {
+      const old = document.createElement('canvas');
+      old.width = layer.canvas.width;
+      old.height = layer.canvas.height;
+      old.getContext('2d').drawImage(layer.canvas, 0, 0);
+      layer.canvas.width = newW;
+      layer.canvas.height = newH;
+      layer.ctx.imageSmoothingEnabled = interpolation !== 'nearest';
+      if (interpolation === 'bicubic') layer.ctx.imageSmoothingQuality = 'high';
+      else layer.ctx.imageSmoothingQuality = 'low';
+      layer.ctx.drawImage(old, 0, 0, newW, newH);
+      layer.ctx.imageSmoothingEnabled = false;
+    }
+    this.width = newW;
+    this.height = newH;
+    this.composite.width = newW;
+    this.composite.height = newH;
+    this.selection = new Selection(newW, newH);
+  }
+
   /** Build composite from all visible layers */
   compositeAll() {
     const ctx = this.compositeCtx;
