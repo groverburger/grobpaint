@@ -14,7 +14,11 @@ import zipfile
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
-DIR = Path(__file__).parent
+# Support PyInstaller bundled mode
+if getattr(sys, '_MEIPASS', None):
+    DIR = Path(sys._MEIPASS)
+else:
+    DIR = Path(__file__).parent
 
 
 def find_free_port():

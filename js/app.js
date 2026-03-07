@@ -36,6 +36,9 @@ class App {
     this._initClipboard();
     this._initGrid();
 
+    // Eagerly detect server availability so file dialogs work on first click
+    this._hasServer();
+
     // Re-fit after first layout (viewport may have 0 size during constructor)
     requestAnimationFrame(() => {
       if (this.doc) this.fitInView();
