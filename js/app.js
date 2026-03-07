@@ -904,8 +904,7 @@ class App {
   async _hasServer() {
     if (this._serverAvailable !== undefined) return this._serverAvailable;
     try {
-      // POST with no body — server returns {cancelled:true} or similar, not a 404
-      const resp = await fetch('/api/file/open', { method: 'POST' });
+      const resp = await fetch('/api/ping', { method: 'POST' });
       this._serverAvailable = resp.ok;
     } catch {
       this._serverAvailable = false;

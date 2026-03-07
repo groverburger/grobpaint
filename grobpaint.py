@@ -111,7 +111,9 @@ class Handler(SimpleHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length) if length else b""
 
-        if self.path == "/api/file/open":
+        if self.path == "/api/ping":
+            self._json_response({"ok": True})
+        elif self.path == "/api/file/open":
             self._handle_file_open()
         elif self.path == "/api/file/save":
             self._handle_file_save(body)
