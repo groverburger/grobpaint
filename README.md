@@ -2,7 +2,7 @@
 
 Somewhere between MS Paint and Paint.NET. Multiplatform by default.
 
-Paint.NET doesn't run on macOS. GrobPaint fills that gap — a lightweight image editor with layers, blend modes, and proper selection tools, built entirely with web technologies and served from a tiny Python backend.
+Paint.NET doesn't run on macOS. GrobPaint fills that gap: a lightweight image editor with layers, blend modes, and selection tools, built with web technologies and a tiny Python backend. The goal isn't to clone Paint.NET or compete with Photoshop. It's to have the tools you actually need without the bloat.
 
 ![Python](https://img.shields.io/badge/python-3.9+-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey) ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -10,16 +10,16 @@ Paint.NET doesn't run on macOS. GrobPaint fills that gap — a lightweight image
 
 ## Features
 
-- **Layers** — add, delete, duplicate, merge, reorder, per-layer opacity and blend modes (16 modes: Normal, Multiply, Screen, Overlay, etc.)
-- **Tools** — Pencil, Brush, Eraser, Fill, Eyedropper, Line, Rectangle, Ellipse, Text, Rectangular Select, Magic Wand, Move, Rotate, Scale, Mirror
-- **Selection** — rectangular and magic wand with configurable tolerance, copy/cut/paste, crop to selection, delete
-- **Color** — HSV picker, RGB/Hex input, alpha channel, palette support (Lospec 500, PICO-8), swap primary/secondary
-- **Canvas** — zoom (scroll wheel, pinch, keyboard), pan (space+drag, middle-click, trackpad), fit-to-view, configurable grid overlay
-- **File I/O** — open/save PNG, JPEG, BMP, GIF; native project format (`.gbp`) preserves layers as a ZIP archive
-- **Sprite sheets** — split a sheet into layers, or export layers as a horizontal sheet
-- **Image operations** — scale (nearest/bilinear/bicubic), canvas resize with anchor, flip horizontal/vertical, flatten
-- **Multi-document** — tabbed interface, multiple images open at once
-- **Clipboard** — paste images directly from clipboard as new layers
+- **Layers** - add, delete, duplicate, merge, reorder, per-layer opacity and blend modes (16 modes)
+- **Tools** - Pencil, Brush, Eraser, Fill, Eyedropper, Line, Rectangle, Ellipse, Text, Select, Magic Wand, Move, Rotate, Scale, Mirror
+- **Selection** - rectangular and magic wand with configurable tolerance, copy/cut/paste, crop to selection
+- **Color** - HSV picker, RGB/Hex input, alpha channel, palettes (Lospec 500, PICO-8), swap primary/secondary
+- **Canvas** - zoom (scroll wheel, pinch, keyboard), pan (space+drag, middle-click, trackpad), fit-to-view, grid overlay
+- **File I/O** - PNG, JPEG, BMP, GIF; native `.gbp` project format preserves layers as a ZIP archive
+- **Sprite sheets** - split a sheet into layers, or export layers as a horizontal sheet
+- **Image operations** - scale (nearest/bilinear/bicubic), canvas resize with anchor, flip, flatten
+- **Multi-document** - tabbed interface, multiple images open at once
+- **Clipboard** - paste images directly from clipboard as new layers
 
 ## Getting started
 
@@ -40,7 +40,7 @@ python grobpaint.py --browser
 **Dependencies:**
 
 - Python 3.9+
-- `pywebview` (optional, for native window) — `pip install pywebview`
+- `pywebview` (optional, for native window) - `pip install pywebview`
 
 No npm, no bundler, no build step. The frontend is vanilla JS with ES modules.
 
@@ -103,3 +103,7 @@ The app is ~2500 lines of vanilla JavaScript split across four modules:
 | `grobpaint.py` | Python HTTP server + pywebview launcher, native file dialogs |
 
 No frameworks, no dependencies beyond one CDN include (JSZip for browser-side `.gbp` support).
+
+## Acknowledgments
+
+GrobPaint was built with significant help from [Claude](https://claude.ai) by Anthropic.
