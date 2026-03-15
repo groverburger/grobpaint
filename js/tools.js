@@ -1071,7 +1071,93 @@ export class MagicWandTool extends Tool {
   }
 }
 
-// ===== Move Pixels (M, toggle with Move Selection) =====
+// ===== Lasso Select =====
+
+export class LassoTool extends Tool {
+  constructor() {
+    super('Lasso', '');
+    this._drawing = false;
+    this._points = [];
+  }
+
+  onPointerDown(doc, x, y, e) {
+    doc.saveSelectionState();
+    this._drawing = true;
+    this._points = [{ x: Math.floor(x), y: Math.floor(y) }];
+  }
+
+  onPointerMove(doc, x, y, e) {
+    if (!this._drawing) return;
+    const last = this._points[this._points.length - 1];
+    const px = Math.floor(x), py = Math.floor(y);
+    if (Math.abs(px - last.x) > 1 || Math.abs(py - last.y) > 1) {
+      this._points.push({ x: px, y: py });
+      bus.emit('canvas:dirty');
+    }
+  }
+
+  onPointerUp(doc) {
+    if (!this._drawing) return;
+    this._drawing = false;
+    if (this._points.length < 3) { this._points = []; return; }
+    // Rasterize polygon to selection mask using canvas fill
+    const c = document.createElement('canvas');
+    c.width = doc.width; c.height = doc.height;
+    const ctx = c.getContext('2d');
+    ctx.beginPath();
+    ctx.moveTo(this._points[0].x, this._points[0].y);
+    for (let i = 1; i < this._points.length; i++) {
+      ctx.lineTo(this._points[i].x, this._points[i].y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    const id = ctx.getImageData(0, 0, doc.width, doc.height);
+    const mask = new Uint8Array(doc.width * doc.height);
+    let minX = doc.width, maxX = 0, minY = doc.height, maxY = 0;
+    let found = false;
+    for (let i = 0; i < mask.length; i++) {
+      if (id.data[i * 4 + 3] > 0) {
+        mask[i] = 1;
+        const x = i % doc.width, y = Math.floor(i / doc.width);
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+        found = true;
+      }
+    }
+    if (found) {
+      doc.selection.setMask(mask, { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 });
+    } else {
+      doc.selection.clear();
+    }
+    this._points = [];
+    bus.emit('canvas:dirty');
+  }
+
+  onOverlay(ctx, doc) {
+    if (!this._drawing || this._points.length < 2) return;
+    const z = doc.zoom;
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(this._points[0].x * z + doc.panX, this._points[0].y * z + doc.panY);
+    for (let i = 1; i < this._points.length; i++) {
+      ctx.lineTo(this._points[i].x * z + doc.panX, this._points[i].y * z + doc.panY);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Draw closing line to start
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.beginPath();
+    const last = this._points[this._points.length - 1];
+    ctx.moveTo(last.x * z + doc.panX, last.y * z + doc.panY);
+    ctx.lineTo(this._points[0].x * z + doc.panX, this._points[0].y * z + doc.panY);
+    ctx.stroke();
+  }
+}
+
+// ===== Move Pixels (M) =====
 
 export class MovePixelsTool extends Tool {
   constructor() {
@@ -1552,7 +1638,7 @@ export class ToolManager {
       new PencilTool(), new BrushTool(), new EraserTool(),
       new FillTool(), new EyedropperTool(), new LineTool(),
       new RectangleTool(), new EllipseTool(), new TextTool(),
-      new SelectRectTool(), new MagicWandTool(),
+      new SelectRectTool(), new MagicWandTool(), new LassoTool(),
       new MovePixelsTool(),
     ];
     for (const t of all) this.tools[t.name.toLowerCase()] = t;
@@ -1566,8 +1652,9 @@ export class ToolManager {
     bus.on('tool:set', name => this.setTool(name));
     bus.on('tool:set-by-key', key => {
       // S cycles between selection tools
-      if (key === 's' && (this._toolName === 'select' || this._toolName === 'wand')) {
-        this.setTool(this._toolName === 'select' ? 'wand' : 'select');
+      if (key === 's' && ['select', 'wand', 'lasso'].includes(this._toolName)) {
+        const cycle = ['select', 'wand', 'lasso'];
+        this.setTool(cycle[(cycle.indexOf(this._toolName) + 1) % cycle.length]);
         return;
       }
       const name = this._keyMap[key];

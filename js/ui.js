@@ -937,6 +937,12 @@ export class MenuBar {
         { label: 'Deselect', shortcut: 'Ctrl+D', action: () => app.deselect() },
       ];
       case 'image': return [
+        { label: 'Brightness/Contrast...', action: () => app.showBrightnessContrast() },
+        { label: 'Hue/Saturation/Lightness...', action: () => app.showHSLAdjust() },
+        { sep: true },
+        { label: 'Gaussian Blur...', action: () => app.showGaussianBlur() },
+        { label: 'Sharpen...', action: () => app.showSharpen() },
+        { sep: true },
         { label: 'Flip Horizontal', action: () => app.flipHorizontal() },
         { label: 'Flip Vertical', action: () => app.flipVertical() },
         { sep: true },
@@ -1153,5 +1159,327 @@ export class ScaleImageDialog {
     document.getElementById('zoom-input').value = Math.round(doc.zoom * 100);
     document.getElementById('zoom-slider').value = Math.round(Math.log(doc.zoom / 0.05) / Math.log(32 / 0.05) * 100);
     this.hide();
+  }
+}
+
+// ===== Adjustment Dialog Base =====
+
+class AdjustmentDialog {
+  constructor(overlayId, okId, cancelId) {
+    this._doc = null;
+    this._savedImageData = null;
+    this._layerIndex = -1;
+    this._raf = null;
+    document.getElementById(okId).addEventListener('click', () => this._apply());
+    document.getElementById(cancelId).addEventListener('click', () => this._cancel());
+    document.getElementById(overlayId).querySelector('.dialog').addEventListener('keydown', e => {
+      if (e.key === 'Escape') this._cancel();
+    });
+    this._overlayId = overlayId;
+  }
+
+  show(doc) {
+    if (!doc || !doc.activeLayer) return;
+    this._doc = doc;
+    this._layerIndex = doc.activeLayerIndex;
+    doc.saveDrawState(this._layerIndex);
+    this._savedImageData = doc.layers[this._layerIndex].getSnapshot();
+    this._resetSliders();
+    document.getElementById(this._overlayId).classList.remove('hidden');
+  }
+
+  hide() {
+    document.getElementById(this._overlayId).classList.add('hidden');
+    if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
+  }
+
+  _apply() {
+    this._savedImageData = null;
+    this.hide();
+    bus.emit('canvas:dirty');
+  }
+
+  _cancel() {
+    if (this._savedImageData && this._doc) {
+      this._doc.layers[this._layerIndex].restoreSnapshot(this._savedImageData);
+      const h = this._doc.history;
+      if (h.index >= 0) { h.states.splice(h.index, 1); h.index--; }
+    }
+    this._savedImageData = null;
+    this.hide();
+    bus.emit('canvas:dirty');
+  }
+
+  _schedulePreview() {
+    if (this._raf) return;
+    this._raf = requestAnimationFrame(() => {
+      this._raf = null;
+      this._preview();
+    });
+  }
+
+  _preview() {
+    if (!this._savedImageData || !this._doc) return;
+    const layer = this._doc.layers[this._layerIndex];
+    layer.restoreSnapshot(this._savedImageData);
+    const imageData = layer.ctx.getImageData(0, 0, this._doc.width, this._doc.height);
+    const sel = this._doc.selection;
+    const mask = sel.active ? sel.mask : null;
+    this._transformPixels(imageData.data, mask);
+    layer.ctx.putImageData(imageData, 0, 0);
+    bus.emit('canvas:dirty');
+  }
+
+  _transformPixels(data, mask) {}
+  _resetSliders() {}
+}
+
+// ===== Brightness / Contrast =====
+
+export class BrightnessContrastDialog extends AdjustmentDialog {
+  constructor() {
+    super('bc-overlay', 'bc-ok', 'bc-cancel');
+    const bSlider = document.getElementById('bc-brightness');
+    const cSlider = document.getElementById('bc-contrast');
+    const bVal = document.getElementById('bc-brightness-val');
+    const cVal = document.getElementById('bc-contrast-val');
+    const update = () => {
+      bVal.textContent = bSlider.value;
+      cVal.textContent = cSlider.value;
+      this._schedulePreview();
+    };
+    bSlider.addEventListener('input', update);
+    cSlider.addEventListener('input', update);
+  }
+
+  _resetSliders() {
+    document.getElementById('bc-brightness').value = 0;
+    document.getElementById('bc-contrast').value = 0;
+    document.getElementById('bc-brightness-val').textContent = '0';
+    document.getElementById('bc-contrast-val').textContent = '0';
+  }
+
+  _transformPixels(data, mask) {
+    const brightness = parseInt(document.getElementById('bc-brightness').value);
+    const contrast = parseInt(document.getElementById('bc-contrast').value);
+    const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] === 0) continue;
+      if (mask && !mask[i / 4]) continue;
+      data[i]     = Math.max(0, Math.min(255, factor * (data[i] + brightness - 128) + 128));
+      data[i + 1] = Math.max(0, Math.min(255, factor * (data[i + 1] + brightness - 128) + 128));
+      data[i + 2] = Math.max(0, Math.min(255, factor * (data[i + 2] + brightness - 128) + 128));
+    }
+  }
+}
+
+// ===== Hue / Saturation / Lightness =====
+
+export class HSLAdjustDialog extends AdjustmentDialog {
+  constructor() {
+    super('hsl-overlay', 'hsl-ok', 'hsl-cancel');
+    const hSlider = document.getElementById('hsl-hue');
+    const sSlider = document.getElementById('hsl-sat');
+    const lSlider = document.getElementById('hsl-light');
+    const hVal = document.getElementById('hsl-hue-val');
+    const sVal = document.getElementById('hsl-sat-val');
+    const lVal = document.getElementById('hsl-light-val');
+    const update = () => {
+      hVal.textContent = hSlider.value;
+      sVal.textContent = sSlider.value;
+      lVal.textContent = lSlider.value;
+      this._schedulePreview();
+    };
+    hSlider.addEventListener('input', update);
+    sSlider.addEventListener('input', update);
+    lSlider.addEventListener('input', update);
+  }
+
+  _resetSliders() {
+    document.getElementById('hsl-hue').value = 0;
+    document.getElementById('hsl-sat').value = 0;
+    document.getElementById('hsl-light').value = 0;
+    document.getElementById('hsl-hue-val').textContent = '0';
+    document.getElementById('hsl-sat-val').textContent = '0';
+    document.getElementById('hsl-light-val').textContent = '0';
+  }
+
+  _transformPixels(data, mask) {
+    const hShift = parseInt(document.getElementById('hsl-hue').value);
+    const sFactor = parseInt(document.getElementById('hsl-sat').value) / 100;
+    const lShift = parseInt(document.getElementById('hsl-light').value) / 100;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] === 0) continue;
+      if (mask && !mask[i / 4]) continue;
+      let r = data[i] / 255, g = data[i + 1] / 255, b = data[i + 2] / 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      let h, s, l = (max + min) / 2;
+      if (max === min) { h = s = 0; }
+      else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+      }
+      h = ((h * 360 + hShift) % 360 + 360) % 360 / 360;
+      s = Math.max(0, Math.min(1, s + sFactor));
+      l = Math.max(0, Math.min(1, l + lShift));
+      if (s === 0) { r = g = b = l; }
+      else {
+        const hue2rgb = (p, q, t) => {
+          if (t < 0) t += 1; if (t > 1) t -= 1;
+          if (t < 1/6) return p + (q - p) * 6 * t;
+          if (t < 1/2) return q;
+          if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+          return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1/3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1/3);
+      }
+      data[i] = Math.round(r * 255);
+      data[i + 1] = Math.round(g * 255);
+      data[i + 2] = Math.round(b * 255);
+    }
+  }
+}
+
+// ===== Gaussian Blur utility =====
+
+function gaussianBlur(imageData, radius) {
+  if (radius < 0.5) return;
+  const { width, height, data } = imageData;
+  const sigma = Math.max(radius / 3, 0.3);
+  const kSize = Math.ceil(sigma * 3) * 2 + 1;
+  const kHalf = Math.floor(kSize / 2);
+  const kernel = new Float32Array(kSize);
+  let kSum = 0;
+  for (let i = 0; i < kSize; i++) {
+    const x = i - kHalf;
+    kernel[i] = Math.exp(-(x * x) / (2 * sigma * sigma));
+    kSum += kernel[i];
+  }
+  for (let i = 0; i < kSize; i++) kernel[i] /= kSum;
+
+  const buf = new Float32Array(width * height * 4);
+  for (let i = 0; i < data.length; i += 4) {
+    const a = data[i + 3] / 255;
+    buf[i] = data[i] * a; buf[i + 1] = data[i + 1] * a;
+    buf[i + 2] = data[i + 2] * a; buf[i + 3] = data[i + 3];
+  }
+
+  const tmp = new Float32Array(buf.length);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let r = 0, g = 0, b = 0, a = 0;
+      for (let k = 0; k < kSize; k++) {
+        const sx = Math.max(0, Math.min(width - 1, x + k - kHalf));
+        const pi = (y * width + sx) * 4;
+        r += buf[pi] * kernel[k]; g += buf[pi + 1] * kernel[k];
+        b += buf[pi + 2] * kernel[k]; a += buf[pi + 3] * kernel[k];
+      }
+      const di = (y * width + x) * 4;
+      tmp[di] = r; tmp[di + 1] = g; tmp[di + 2] = b; tmp[di + 3] = a;
+    }
+  }
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let r = 0, g = 0, b = 0, a = 0;
+      for (let k = 0; k < kSize; k++) {
+        const sy = Math.max(0, Math.min(height - 1, y + k - kHalf));
+        const pi = (sy * width + x) * 4;
+        r += tmp[pi] * kernel[k]; g += tmp[pi + 1] * kernel[k];
+        b += tmp[pi + 2] * kernel[k]; a += tmp[pi + 3] * kernel[k];
+      }
+      const di = (y * width + x) * 4;
+      const aa = Math.max(a, 0.001);
+      data[di] = Math.min(255, Math.round(r / aa * 255));
+      data[di + 1] = Math.min(255, Math.round(g / aa * 255));
+      data[di + 2] = Math.min(255, Math.round(b / aa * 255));
+      data[di + 3] = Math.round(Math.min(255, a));
+    }
+  }
+}
+
+export class GaussianBlurDialog extends AdjustmentDialog {
+  constructor() {
+    super('blur-overlay', 'blur-ok', 'blur-cancel');
+    const slider = document.getElementById('blur-radius');
+    const val = document.getElementById('blur-radius-val');
+    slider.addEventListener('input', () => {
+      val.textContent = slider.value;
+      this._schedulePreview();
+    });
+  }
+
+  _resetSliders() {
+    document.getElementById('blur-radius').value = 0;
+    document.getElementById('blur-radius-val').textContent = '0';
+  }
+
+  _transformPixels(data, mask) {
+    const radius = parseFloat(document.getElementById('blur-radius').value);
+    if (radius < 0.5) return;
+    if (mask) {
+      const copy = new Uint8ClampedArray(data);
+      const tmpImg = new ImageData(copy, this._doc.width, this._doc.height);
+      gaussianBlur(tmpImg, radius);
+      for (let i = 0; i < mask.length; i++) {
+        if (mask[i]) {
+          data[i * 4] = copy[i * 4]; data[i * 4 + 1] = copy[i * 4 + 1];
+          data[i * 4 + 2] = copy[i * 4 + 2]; data[i * 4 + 3] = copy[i * 4 + 3];
+        }
+      }
+    } else {
+      const tmpImg = new ImageData(data, this._doc.width, this._doc.height);
+      gaussianBlur(tmpImg, radius);
+    }
+  }
+}
+
+// ===== Sharpen (Unsharp Mask) =====
+
+export class SharpenDialog extends AdjustmentDialog {
+  constructor() {
+    super('sharpen-overlay', 'sharpen-ok', 'sharpen-cancel');
+    const rSlider = document.getElementById('sharpen-radius');
+    const aSlider = document.getElementById('sharpen-amount');
+    const rVal = document.getElementById('sharpen-radius-val');
+    const aVal = document.getElementById('sharpen-amount-val');
+    const update = () => {
+      rVal.textContent = rSlider.value;
+      aVal.textContent = aSlider.value + '%';
+      this._schedulePreview();
+    };
+    rSlider.addEventListener('input', update);
+    aSlider.addEventListener('input', update);
+  }
+
+  _resetSliders() {
+    document.getElementById('sharpen-radius').value = 1;
+    document.getElementById('sharpen-amount').value = 100;
+    document.getElementById('sharpen-radius-val').textContent = '1';
+    document.getElementById('sharpen-amount-val').textContent = '100%';
+  }
+
+  _transformPixels(data, mask) {
+    const radius = parseFloat(document.getElementById('sharpen-radius').value);
+    const amount = parseInt(document.getElementById('sharpen-amount').value) / 100;
+    if (radius < 0.5 || amount === 0) return;
+    const blurred = new Uint8ClampedArray(data);
+    const tmpImg = new ImageData(blurred, this._doc.width, this._doc.height);
+    gaussianBlur(tmpImg, radius);
+    const len = mask ? mask.length : data.length / 4;
+    for (let i = 0; i < len; i++) {
+      if (mask && !mask[i]) continue;
+      const pi = i * 4;
+      if (data[pi + 3] === 0) continue;
+      data[pi]     = Math.max(0, Math.min(255, data[pi] + amount * (data[pi] - blurred[pi])));
+      data[pi + 1] = Math.max(0, Math.min(255, data[pi + 1] + amount * (data[pi + 1] - blurred[pi + 1])));
+      data[pi + 2] = Math.max(0, Math.min(255, data[pi + 2] + amount * (data[pi + 2] - blurred[pi + 2])));
+    }
   }
 }

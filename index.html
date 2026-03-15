@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GrobPaint</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#252836">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
@@ -65,6 +67,9 @@
     </button>
     <button class="tool-btn" data-tool="wand" title="Magic Wand (W)">
       <svg viewBox="0 0 24 24"><path d="M7.5 5.6L5 7l1.4-2.5L5 2l2.5 1.4L10 2 8.6 4.5 10 7 7.5 5.6zm12 9.8L22 14l-1.4 2.5L22 19l-2.5-1.4L17 19l1.4-2.5L17 14l2.5 1.4zM22 2l-2.5 1.4L17 2l1.4 2.5L17 7l2.5-1.4L22 7l-1.4-2.5L22 2zM3.5 21.5l10-10-2-2-10 10a1.41 1.41 0 002 2z"/></svg>
+    </button>
+    <button class="tool-btn" data-tool="lasso" title="Lasso Select">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 5.58 2 10c0 2.72 1.64 5.12 4.14 6.53-.06.6-.3 1.77-1.14 2.47 1.54-.05 3.2-.8 4.2-1.82.56.1 1.16.16 1.8.16 5.52 0 10-3.58 10-8S17.52 2 12 2z" fill="none" stroke="currentColor" stroke-width="2"/></svg>
     </button>
     <button class="tool-btn" data-tool="move" title="Move Pixels (M)">
       <svg viewBox="0 0 24 24"><path d="M12 2l3 3h-2v4h4v-2l3 3-3 3v-2h-4v4h2l-3 3-3-3h2v-4H7v2l-3-3 3-3v2h4V5H9l3-3z"/></svg>
@@ -291,11 +296,60 @@
   </div>
 </div>
 
+<!-- Brightness/Contrast Dialog -->
+<div id="bc-overlay" class="hidden">
+  <div class="dialog">
+    <h3>Brightness / Contrast</h3>
+    <div class="dialog-body">
+      <div class="dialog-row"><label>Brightness:</label><input type="range" id="bc-brightness" min="-100" max="100" value="0"><span id="bc-brightness-val" class="adj-val">0</span></div>
+      <div class="dialog-row"><label>Contrast:</label><input type="range" id="bc-contrast" min="-100" max="100" value="0"><span id="bc-contrast-val" class="adj-val">0</span></div>
+    </div>
+    <div class="dialog-buttons"><button id="bc-ok">OK</button><button id="bc-cancel">Cancel</button></div>
+  </div>
+</div>
+
+<!-- Hue/Saturation/Lightness Dialog -->
+<div id="hsl-overlay" class="hidden">
+  <div class="dialog">
+    <h3>Hue / Saturation / Lightness</h3>
+    <div class="dialog-body">
+      <div class="dialog-row"><label>Hue:</label><input type="range" id="hsl-hue" min="-180" max="180" value="0"><span id="hsl-hue-val" class="adj-val">0</span></div>
+      <div class="dialog-row"><label>Saturation:</label><input type="range" id="hsl-sat" min="-100" max="100" value="0"><span id="hsl-sat-val" class="adj-val">0</span></div>
+      <div class="dialog-row"><label>Lightness:</label><input type="range" id="hsl-light" min="-100" max="100" value="0"><span id="hsl-light-val" class="adj-val">0</span></div>
+    </div>
+    <div class="dialog-buttons"><button id="hsl-ok">OK</button><button id="hsl-cancel">Cancel</button></div>
+  </div>
+</div>
+
+<!-- Gaussian Blur Dialog -->
+<div id="blur-overlay" class="hidden">
+  <div class="dialog">
+    <h3>Gaussian Blur</h3>
+    <div class="dialog-body">
+      <div class="dialog-row"><label>Radius:</label><input type="range" id="blur-radius" min="0" max="50" value="0" step="0.5"><span id="blur-radius-val" class="adj-val">0</span></div>
+    </div>
+    <div class="dialog-buttons"><button id="blur-ok">OK</button><button id="blur-cancel">Cancel</button></div>
+  </div>
+</div>
+
+<!-- Sharpen Dialog -->
+<div id="sharpen-overlay" class="hidden">
+  <div class="dialog">
+    <h3>Sharpen (Unsharp Mask)</h3>
+    <div class="dialog-body">
+      <div class="dialog-row"><label>Radius:</label><input type="range" id="sharpen-radius" min="0.5" max="20" value="1" step="0.5"><span id="sharpen-radius-val" class="adj-val">1</span></div>
+      <div class="dialog-row"><label>Amount:</label><input type="range" id="sharpen-amount" min="0" max="500" value="100"><span id="sharpen-amount-val" class="adj-val">100%</span></div>
+    </div>
+    <div class="dialog-buttons"><button id="sharpen-ok">OK</button><button id="sharpen-cancel">Cancel</button></div>
+  </div>
+</div>
+
 <script type="module" src="js/core.js"></script>
 <script type="module" src="js/renderer.js"></script>
 <script type="module" src="js/tools.js"></script>
 <script type="module" src="js/ui.js"></script>
 <script type="module" src="js/app.js"></script>
+<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>
 
 </body>
 </html>

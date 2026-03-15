@@ -11,8 +11,9 @@ Paint.NET doesn't run on macOS. GrobPaint fills that gap: a lightweight image ed
 ## Features
 
 - **Layers** - add, delete, duplicate, merge, reorder, per-layer opacity and blend modes (16 modes)
-- **Tools** - Pencil, Brush, Eraser, Fill, Eyedropper, Line, Rectangle, Ellipse, Text, Select, Magic Wand, Move
-- **Selection** - rectangular and magic wand with live tolerance preview, move/resize/rotate content with handles, copy/cut/paste, crop to selection
+- **Tools** - Pencil, Brush, Eraser, Fill, Eyedropper, Line, Rectangle, Ellipse, Text, Select, Magic Wand, Lasso, Move
+- **Selection** - rectangular, magic wand with live tolerance, and freehand lasso; move/resize/rotate content with handles, copy/cut/paste, crop to selection
+- **Adjustments** - brightness/contrast, hue/saturation/lightness, gaussian blur, sharpen (unsharp mask) - all with live preview
 - **Color** - HSV picker, RGB/Hex input, alpha channel, palettes (Lospec 500, PICO-8), swap primary/secondary
 - **Canvas** - zoom (scroll wheel, pinch, keyboard, editable input + slider), pan (space+drag, middle-click, trackpad), fit-to-view, grid overlay
 - **File I/O** - PNG, JPEG, BMP, GIF; native `.gbp` project format preserves layers as a ZIP archive
@@ -43,7 +44,7 @@ python grobpaint.py --browser
 - Python 3.9+
 - `pywebview` (optional, for native window) - `pip install pywebview`
 
-No npm, no bundler, no build step. The frontend is vanilla JS with ES modules.
+No npm, no bundler, no build step. The frontend is vanilla JS with ES modules. GrobPaint is also a PWA - it can be installed from the browser and works offline.
 
 ### Build a standalone app
 

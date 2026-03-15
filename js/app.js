@@ -3,7 +3,7 @@
 import { bus, Selection } from './core.js';
 import { Renderer } from './renderer.js';
 import { ToolManager } from './tools.js';
-import { ColorSystem, LayersPanel, DocManager, ToolOptionsBar, MenuBar, NewImageDialog, CanvasSizeDialog, ScaleImageDialog } from './ui.js';
+import { ColorSystem, LayersPanel, DocManager, ToolOptionsBar, MenuBar, NewImageDialog, CanvasSizeDialog, ScaleImageDialog, BrightnessContrastDialog, HSLAdjustDialog, GaussianBlurDialog, SharpenDialog } from './ui.js';
 
 class App {
   constructor() {
@@ -25,6 +25,10 @@ class App {
     this.newDialog = new NewImageDialog();
     this.canvasSizeDialog = new CanvasSizeDialog();
     this.scaleImageDialog = new ScaleImageDialog();
+    this.bcDialog = new BrightnessContrastDialog();
+    this.hslDialog = new HSLAdjustDialog();
+    this.blurDialog = new GaussianBlurDialog();
+    this.sharpenDialog = new SharpenDialog();
 
     // Restore from localStorage or create initial document
     if (!this.docManager.restoreFromStorage()) {
@@ -907,6 +911,11 @@ class App {
     if (!this.doc) return;
     this.scaleImageDialog.show(this.doc);
   }
+
+  showBrightnessContrast() { if (this.doc) this.bcDialog.show(this.doc); }
+  showHSLAdjust() { if (this.doc) this.hslDialog.show(this.doc); }
+  showGaussianBlur() { if (this.doc) this.blurDialog.show(this.doc); }
+  showSharpen() { if (this.doc) this.sharpenDialog.show(this.doc); }
 
   showCanvasSizeDialog() {
     if (!this.doc) return;
