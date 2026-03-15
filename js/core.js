@@ -97,7 +97,7 @@ export class Selection {
     this.bounds = null; // {x, y, w, h} or null
     this.active = false;
     this._animOffset = 0;
-    this._edgeSegs = null; // precomputed edge segments for mask outline
+    this._contours = null; // precomputed contour paths for mask outline
   }
 
   setRect(x, y, w, h) {
@@ -111,7 +111,7 @@ export class Selection {
       for (let col = x; col < x + w; col++)
         this.mask[row * this.width + col] = 1;
     this.bounds = { x, y, w, h };
-    this._edgeSegs = null; // rect uses strokeRect shortcut
+    this._contours = null;
     this.active = true;
   }
 
@@ -125,7 +125,7 @@ export class Selection {
   clear() {
     this.mask = null;
     this.bounds = null;
-    this._edgeSegs = null;
+    this._contours = null;
     this.active = false;
   }
 
@@ -202,40 +202,61 @@ export class Selection {
     layer.ctx.putImageData(cur, 0, 0);
   }
 
-  /** Precompute edge segments for non-rectangular masks (merged for perf) */
+  /** Precompute contour paths for non-rectangular masks using edge tracing.
+   *  Produces connected polylines instead of isolated segments for smooth dash rendering. */
   _computeEdges() {
-    if (!this.mask || !this.bounds) { this._edgeSegs = null; return; }
+    if (!this.mask || !this.bounds) { this._contours = null; return; }
     const { x: bx, y: by, w: bw, h: bh } = this.bounds;
-    const W = this.width, H = this.height, mask = this.mask;
-    const segs = []; // flat array: x1, y1, x2, y2, ...
+    const W = this.width, mask = this.mask;
 
-    // Horizontal edges — scan row by row, merge adjacent segments
-    for (let y = by; y < by + bh; y++) {
-      let topStart = -1, botStart = -1;
-      for (let x = bx; x <= bx + bw; x++) {
-        const sel = x < bx + bw && mask[y * W + x];
-        const needTop = sel && (y === 0 || !mask[(y - 1) * W + x]);
-        const needBot = sel && (y === H - 1 || !mask[(y + 1) * W + x]);
-        if (needTop) { if (topStart < 0) topStart = x; }
-        else if (topStart >= 0) { segs.push(topStart, y, x, y); topStart = -1; }
-        if (needBot) { if (botStart < 0) botStart = x; }
-        else if (botStart >= 0) { segs.push(botStart, y + 1, x, y + 1); botStart = -1; }
+    // Build a set of directed edges between pixel corners.
+    // Each edge goes from (x1,y1) to (x2,y2) where coords are pixel-corner coords.
+    // For a selected pixel at (px,py), we add edges for each side that borders an unselected pixel.
+    const edgeMap = new Map(); // "x,y" -> [{x2,y2}]
+    const addEdge = (x1, y1, x2, y2) => {
+      const key = x1 + ',' + y1;
+      if (!edgeMap.has(key)) edgeMap.set(key, []);
+      edgeMap.get(key).push({ x: x2, y: y2 });
+    };
+
+    for (let py = by; py < by + bh; py++) {
+      for (let px = bx; px < bx + bw; px++) {
+        if (!mask[py * W + px]) continue;
+        // Top edge: if pixel above is not selected
+        if (py === 0 || !mask[(py - 1) * W + px]) addEdge(px, py, px + 1, py);
+        // Bottom edge
+        if (py === this.height - 1 || !mask[(py + 1) * W + px]) addEdge(px + 1, py + 1, px, py + 1);
+        // Left edge
+        if (px === 0 || !mask[py * W + (px - 1)]) addEdge(px, py + 1, px, py);
+        // Right edge
+        if (px === this.width - 1 || !mask[py * W + (px + 1)]) addEdge(px + 1, py, px + 1, py + 1);
       }
     }
-    // Vertical edges — scan column by column, merge adjacent segments
-    for (let x = bx; x < bx + bw; x++) {
-      let leftStart = -1, rightStart = -1;
-      for (let y = by; y <= by + bh; y++) {
-        const sel = y < by + bh && mask[y * W + x];
-        const needLeft = sel && (x === 0 || !mask[y * W + (x - 1)]);
-        const needRight = sel && (x === W - 1 || !mask[y * W + (x + 1)]);
-        if (needLeft) { if (leftStart < 0) leftStart = y; }
-        else if (leftStart >= 0) { segs.push(x, leftStart, x, y); leftStart = -1; }
-        if (needRight) { if (rightStart < 0) rightStart = y; }
-        else if (rightStart >= 0) { segs.push(x + 1, rightStart, x + 1, y); rightStart = -1; }
+
+    // Trace connected contours by following directed edges
+    const contours = []; // array of [{x,y}, ...]
+    while (edgeMap.size > 0) {
+      // Pick any starting edge
+      const [startKey] = edgeMap.keys();
+      const [sx, sy] = startKey.split(',').map(Number);
+      const path = [{ x: sx, y: sy }];
+      let cx = sx, cy = sy;
+      while (true) {
+        const key = cx + ',' + cy;
+        const neighbors = edgeMap.get(key);
+        if (!neighbors || neighbors.length === 0) {
+          edgeMap.delete(key);
+          break;
+        }
+        const next = neighbors.pop();
+        if (neighbors.length === 0) edgeMap.delete(key);
+        cx = next.x; cy = next.y;
+        path.push({ x: cx, y: cy });
+        if (cx === sx && cy === sy) break; // closed loop
       }
+      if (path.length > 2) contours.push(path);
     }
-    this._edgeSegs = segs.length > 0 ? segs : null;
+    this._contours = contours.length > 0 ? contours : null;
   }
 
   /** Draw marching ants on the overlay ctx */
@@ -246,16 +267,17 @@ export class Selection {
     ctx.setLineDash([4, 4]);
     ctx.lineWidth = 1;
 
-    if (this._edgeSegs) {
-      // Non-rectangular mask: draw precomputed edge segments
-      const segs = this._edgeSegs;
+    if (this._contours) {
+      // Non-rectangular mask: draw smooth contour paths
       for (let pass = 0; pass < 2; pass++) {
         ctx.strokeStyle = pass === 0 ? 'white' : 'black';
         ctx.lineDashOffset = -(this._animOffset + pass * 4);
         ctx.beginPath();
-        for (let i = 0; i < segs.length; i += 4) {
-          ctx.moveTo(segs[i] * zoom + panX + 0.5, segs[i + 1] * zoom + panY + 0.5);
-          ctx.lineTo(segs[i + 2] * zoom + panX + 0.5, segs[i + 3] * zoom + panY + 0.5);
+        for (const path of this._contours) {
+          ctx.moveTo(path[0].x * zoom + panX + 0.5, path[0].y * zoom + panY + 0.5);
+          for (let i = 1; i < path.length; i++) {
+            ctx.lineTo(path[i].x * zoom + panX + 0.5, path[i].y * zoom + panY + 0.5);
+          }
         }
         ctx.stroke();
       }
