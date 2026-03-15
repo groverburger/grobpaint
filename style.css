@@ -155,6 +155,8 @@ body {
 }
 .doc-tab .tab-close:hover { opacity: 1; background: var(--danger); color: white; }
 .doc-tab .tab-close:active { opacity: 1; background: #c04858; }
+.doc-tab.dragging { opacity: 0.4; }
+.doc-tab.drag-over { box-shadow: inset 2px 0 0 var(--accent); }
 
 /* ===== Tool Options Bar ===== */
 #tool-options {

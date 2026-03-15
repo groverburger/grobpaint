@@ -367,8 +367,16 @@ export class BrushTool extends Tool {
       ctx.arc(x, y, size / 2, 0, Math.PI * 2);
       ctx.fill();
     } else {
-      const r = Math.floor(size / 2);
-      ctx.fillRect(Math.floor(x) - r, Math.floor(y) - r, size, size);
+      const cx = Math.floor(x), cy = Math.floor(y);
+      const rad = size / 2;
+      const ri = Math.ceil(rad);
+      for (let dy = -ri; dy <= ri; dy++) {
+        for (let dx = -ri; dx <= ri; dx++) {
+          if (dx * dx + dy * dy <= rad * rad) {
+            ctx.fillRect(cx + dx, cy + dy, 1, 1);
+          }
+        }
+      }
     }
     ctx.restore();
   }
@@ -448,8 +456,16 @@ export class EraserTool extends Tool {
       ctx.arc(x, y, size / 2, 0, Math.PI * 2);
       ctx.fill();
     } else {
-      const r = Math.floor(size / 2);
-      ctx.fillRect(Math.floor(x) - r, Math.floor(y) - r, size, size);
+      const cx = Math.floor(x), cy = Math.floor(y);
+      const rad = size / 2;
+      const ri = Math.ceil(rad);
+      for (let dy = -ri; dy <= ri; dy++) {
+        for (let dx = -ri; dx <= ri; dx++) {
+          if (dx * dx + dy * dy <= rad * rad) {
+            ctx.fillRect(cx + dx, cy + dy, 1, 1);
+          }
+        }
+      }
     }
     ctx.restore();
   }

@@ -458,6 +458,10 @@ export class DocManager {
     bus.on('doc:switch', index => this.switchTo(index));
     bus.on('doc:open-image', (dataUrl, name) => this.openImage(dataUrl, name));
     bus.on('doc:open-project', (data) => this.openProject(data));
+
+    // Auto-save to localStorage on changes
+    bus.on('canvas:dirty', () => this._scheduleSave());
+    bus.on('layers:changed', () => this._scheduleSave());
   }
 
   get activeDoc() {
@@ -553,6 +557,8 @@ export class DocManager {
     this.docs.forEach((doc, i) => {
       const tab = document.createElement('div');
       tab.className = 'doc-tab' + (i === this.activeIndex ? ' active' : '');
+      tab.draggable = true;
+      tab.dataset.index = i;
 
       // Thumbnail
       doc.compositeAll();
@@ -587,8 +593,114 @@ export class DocManager {
       tab.appendChild(close);
 
       tab.addEventListener('click', () => this.switchTo(i));
+
+      // Drag-and-drop reordering
+      tab.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('text/plain', i);
+        tab.classList.add('dragging');
+      });
+      tab.addEventListener('dragend', () => tab.classList.remove('dragging'));
+      tab.addEventListener('dragover', e => {
+        e.preventDefault();
+        tab.classList.add('drag-over');
+      });
+      tab.addEventListener('dragleave', () => tab.classList.remove('drag-over'));
+      tab.addEventListener('drop', e => {
+        e.preventDefault();
+        tab.classList.remove('drag-over');
+        const from = parseInt(e.dataTransfer.getData('text/plain'));
+        const to = i;
+        if (from !== to && !isNaN(from)) {
+          const [moved] = this.docs.splice(from, 1);
+          this.docs.splice(to, 0, moved);
+          // Update active index
+          if (this.activeIndex === from) this.activeIndex = to;
+          else if (from < this.activeIndex && to >= this.activeIndex) this.activeIndex--;
+          else if (from > this.activeIndex && to <= this.activeIndex) this.activeIndex++;
+          this.renderTabs();
+          this._scheduleSave();
+        }
+      });
+
       tabBar.appendChild(tab);
     });
+  }
+
+  /** Save all documents to localStorage (debounced) */
+  _scheduleSave() {
+    if (this._saveTimer) clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(() => this.saveToStorage(), 2000);
+  }
+
+  saveToStorage() {
+    try {
+      const data = {
+        activeIndex: this.activeIndex,
+        docs: this.docs.map(doc => ({
+          name: doc.name,
+          width: doc.width,
+          height: doc.height,
+          zoom: doc.zoom,
+          panX: doc.panX,
+          panY: doc.panY,
+          activeLayerIndex: doc.activeLayerIndex,
+          layers: doc.layers.map(l => ({
+            name: l.name,
+            opacity: l.opacity,
+            visible: l.visible,
+            blendMode: l.blendMode,
+            data: l.canvas.toDataURL('image/png'),
+          })),
+        })),
+      };
+      localStorage.setItem('grobpaint_state', JSON.stringify(data));
+    } catch (e) {
+      // Storage quota exceeded or unavailable — silently ignore
+    }
+  }
+
+  restoreFromStorage() {
+    try {
+      const raw = localStorage.getItem('grobpaint_state');
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      if (!data.docs || data.docs.length === 0) return false;
+
+      let loadedCount = 0;
+      const totalLayers = data.docs.reduce((sum, d) => sum + d.layers.length, 0);
+      let layersLoaded = 0;
+
+      for (const docData of data.docs) {
+        const doc = new PaintDocument(docData.width, docData.height, docData.name, 'transparent');
+        doc.zoom = docData.zoom || 1;
+        doc.panX = docData.panX || 0;
+        doc.panY = docData.panY || 0;
+        doc.layers = [];
+        for (const ld of docData.layers) {
+          const layer = new Layer(docData.width, docData.height, ld.name);
+          layer.opacity = ld.opacity !== undefined ? ld.opacity : 1;
+          layer.visible = ld.visible !== undefined ? ld.visible : true;
+          layer.blendMode = ld.blendMode || 'source-over';
+          const img = new Image();
+          img.onload = () => {
+            layer.ctx.drawImage(img, 0, 0);
+            layersLoaded++;
+            if (layersLoaded === totalLayers) {
+              bus.emit('canvas:dirty');
+              bus.emit('layers:changed');
+            }
+          };
+          img.src = ld.data;
+          doc.layers.push(layer);
+        }
+        doc.activeLayerIndex = docData.activeLayerIndex || 0;
+        this.docs.push(doc);
+      }
+      this.switchTo(data.activeIndex || 0);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 }
 

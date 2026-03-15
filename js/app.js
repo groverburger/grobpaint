@@ -26,8 +26,10 @@ class App {
     this.canvasSizeDialog = new CanvasSizeDialog();
     this.scaleImageDialog = new ScaleImageDialog();
 
-    // Create initial document
-    this.docManager.createDoc(1280, 720, 'Untitled', 'white');
+    // Restore from localStorage or create initial document
+    if (!this.docManager.restoreFromStorage()) {
+      this.docManager.createDoc(1280, 720, 'Untitled', 'white');
+    }
 
     // Wire up canvas events
     this._initCanvasEvents();
@@ -53,6 +55,11 @@ class App {
     document.addEventListener('contextmenu', e => {
       if (e.target.closest('#viewport')) e.preventDefault();
       if (e.target.closest('#palette')) e.preventDefault();
+    });
+
+    // Save state before unload
+    window.addEventListener('beforeunload', () => {
+      this.docManager.saveToStorage();
     });
   }
 
@@ -391,10 +398,10 @@ class App {
       // Try clipboardData.items first (Chrome, Edge)
       const items = e.clipboardData?.items;
       if (items) {
-        for (const item of items) {
-          if (item.type.startsWith('image/')) {
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.startsWith('image/')) {
             e.preventDefault();
-            const blob = item.getAsFile();
+            const blob = items[i].getAsFile();
             if (blob) { this._pasteImageBlob(blob); return; }
           }
         }
@@ -402,14 +409,17 @@ class App {
       // Fallback: clipboardData.files (Firefox, Safari)
       const files = e.clipboardData?.files;
       if (files) {
-        for (const file of files) {
-          if (file.type.startsWith('image/')) {
+        for (let i = 0; i < files.length; i++) {
+          if (files[i].type.startsWith('image/')) {
             e.preventDefault();
-            this._pasteImageBlob(file);
+            this._pasteImageBlob(files[i]);
             return;
           }
         }
       }
+      // Last resort: try async clipboard API
+      e.preventDefault();
+      this.pasteFromClipboard();
     });
   }
 
