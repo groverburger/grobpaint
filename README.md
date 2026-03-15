@@ -11,15 +11,16 @@ Paint.NET doesn't run on macOS. GrobPaint fills that gap: a lightweight image ed
 ## Features
 
 - **Layers** - add, delete, duplicate, merge, reorder, per-layer opacity and blend modes (16 modes)
-- **Tools** - Pencil, Brush, Eraser, Fill, Eyedropper, Line, Rectangle, Ellipse, Text, Select, Magic Wand, Move Pixels, Move Selection
-- **Selection** - rectangular and magic wand with configurable tolerance, move/resize/rotate selections and content, copy/cut/paste, crop to selection
+- **Tools** - Pencil, Brush, Eraser, Fill, Eyedropper, Line, Rectangle, Ellipse, Text, Select, Magic Wand, Move
+- **Selection** - rectangular and magic wand with live tolerance preview, move/resize/rotate content with handles, copy/cut/paste, crop to selection
 - **Color** - HSV picker, RGB/Hex input, alpha channel, palettes (Lospec 500, PICO-8), swap primary/secondary
-- **Canvas** - zoom (scroll wheel, pinch, keyboard), pan (space+drag, middle-click, trackpad), fit-to-view, grid overlay
+- **Canvas** - zoom (scroll wheel, pinch, keyboard, editable input + slider), pan (space+drag, middle-click, trackpad), fit-to-view, grid overlay
 - **File I/O** - PNG, JPEG, BMP, GIF; native `.gbp` project format preserves layers as a ZIP archive
 - **Sprite sheets** - split a sheet into layers, or export layers as a horizontal sheet
 - **Image operations** - scale (nearest/bilinear/bicubic), canvas resize with anchor, flip, flatten
-- **Multi-document** - tabbed interface, multiple images open at once
-- **Clipboard** - paste images directly from clipboard as new layers
+- **Multi-document** - draggable tabs, multiple images open at once
+- **Clipboard** - copy/paste within app and to/from system clipboard
+- **Auto-save** - all work is persisted to localStorage automatically
 
 ## Getting started
 
@@ -74,6 +75,8 @@ You can also open `index.html` directly or serve it with any static file server.
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy / cut / paste |
 | `Ctrl+A` / `Ctrl+D` | Select all / deselect |
 | `Ctrl+G` | Toggle grid |
+| `Enter` | Commit active transform |
+| `Escape` | Cancel active transform |
 | `Delete` | Delete selection |
 | `Space` + drag | Pan canvas |
 
