@@ -555,7 +555,9 @@ body {
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  max-height: 150px;
+  height: 150px;
+  min-height: 150px;
+  flex-shrink: 0;
 }
 #history-header {
   padding: 6px 10px;

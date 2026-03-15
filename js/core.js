@@ -478,6 +478,8 @@ export class PaintDocument {
   saveStructureState() {
     this.history.push({
       type: 'structure',
+      width: this.width,
+      height: this.height,
       layerCount: this.layers.length,
       activeIndex: this.activeLayerIndex,
       layers: this.layers.map(l => ({
@@ -521,6 +523,8 @@ export class PaintDocument {
       // Save current for redo
       const current = {
         type: 'structure',
+        width: this.width,
+        height: this.height,
         layerCount: this.layers.length,
         activeIndex: this.activeLayerIndex,
         layers: this.layers.map(l => ({
@@ -529,9 +533,17 @@ export class PaintDocument {
           visible: l.visible, blendMode: l.blendMode,
         })),
       };
-      // Restore
+      // Restore dimensions
+      const restoreW = state.width || this.width;
+      const restoreH = state.height || this.height;
+      this.width = restoreW;
+      this.height = restoreH;
+      this.composite.width = restoreW;
+      this.composite.height = restoreH;
+      this.selection = new Selection(restoreW, restoreH);
+      // Restore layers
       this.layers = state.layers.map(s => {
-        const l = new Layer(this.width, this.height, s.name);
+        const l = new Layer(restoreW, restoreH, s.name);
         l.restoreSnapshot(s.imageData);
         l.opacity = s.opacity;
         l.visible = s.visible;
@@ -543,6 +555,8 @@ export class PaintDocument {
       state.layers = current.layers;
       state.activeIndex = current.activeIndex;
       state.layerCount = current.layerCount;
+      state.width = current.width;
+      state.height = current.height;
     }
     return true;
   }
@@ -575,6 +589,8 @@ export class PaintDocument {
     } else if (state.type === 'structure') {
       const current = {
         type: 'structure',
+        width: this.width,
+        height: this.height,
         layerCount: this.layers.length,
         activeIndex: this.activeLayerIndex,
         layers: this.layers.map(l => ({
@@ -583,8 +599,15 @@ export class PaintDocument {
           visible: l.visible, blendMode: l.blendMode,
         })),
       };
+      const restoreW = state.width || this.width;
+      const restoreH = state.height || this.height;
+      this.width = restoreW;
+      this.height = restoreH;
+      this.composite.width = restoreW;
+      this.composite.height = restoreH;
+      this.selection = new Selection(restoreW, restoreH);
       this.layers = state.layers.map(s => {
-        const l = new Layer(this.width, this.height, s.name);
+        const l = new Layer(restoreW, restoreH, s.name);
         l.restoreSnapshot(s.imageData);
         l.opacity = s.opacity; l.visible = s.visible; l.blendMode = s.blendMode;
         return l;
@@ -592,6 +615,8 @@ export class PaintDocument {
       this.activeLayerIndex = state.activeIndex;
       state.layers = current.layers;
       state.activeIndex = current.activeIndex;
+      state.width = current.width;
+      state.height = current.height;
     }
     return true;
   }

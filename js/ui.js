@@ -409,6 +409,7 @@ export class LayersPanel {
       item.appendChild(name);
 
       item.addEventListener('click', () => {
+        if (doc.activeLayerIndex === i) return; // don't re-render if already active
         doc.activeLayerIndex = i;
         this.render();
         this._syncControls();

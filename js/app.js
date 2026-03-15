@@ -655,6 +655,7 @@ class App {
     if (this.doc.undo()) {
       bus.emit('canvas:dirty');
       bus.emit('layers:changed');
+      document.getElementById('status-size').textContent = `${this.doc.width} x ${this.doc.height}`;
     }
   }
 
@@ -669,6 +670,7 @@ class App {
     if (this.doc.redo()) {
       bus.emit('canvas:dirty');
       bus.emit('layers:changed');
+      document.getElementById('status-size').textContent = `${this.doc.width} x ${this.doc.height}`;
     }
   }
 
