@@ -530,11 +530,35 @@ class App {
     }
   }
 
-  _pasteInternalCanvas(srcCanvas) {
+  /**
+   * Core paste logic: places image source at the right position,
+   * creates a new layer above current, and selects the pasted region.
+   * @param {CanvasImageSource} src - canvas or image element
+   * @param {number} pw - paste width
+   * @param {number} ph - paste height
+   */
+  _pasteAtPosition(src, pw, ph) {
     const doc = this.doc;
     if (!doc) return;
-    const needW = Math.max(doc.width, srcCanvas.width);
-    const needH = Math.max(doc.height, srcCanvas.height);
+
+    // Determine paste position
+    let px, py;
+    const sel = doc.selection;
+    if (sel.active && sel.bounds) {
+      // Offset from current selection position
+      px = sel.bounds.x + 10;
+      py = sel.bounds.y + 10;
+    } else {
+      // Center in viewport
+      const vp = document.getElementById('viewport').getBoundingClientRect();
+      const center = doc.screenToDoc(vp.width / 2, vp.height / 2);
+      px = Math.round(center.x - pw / 2);
+      py = Math.round(center.y - ph / 2);
+    }
+
+    // Expand canvas if pasted content extends beyond bounds
+    const needW = Math.max(doc.width, px + pw);
+    const needH = Math.max(doc.height, py + ph);
     if (needW > doc.width || needH > doc.height) {
       doc.saveStructureState();
       doc.resizeCanvas(needW, needH, 0, 0);
@@ -542,39 +566,32 @@ class App {
     } else {
       doc.saveStructureState();
     }
+
+    // Create new layer above current and draw at position
     const layer = doc.addLayer('Pasted');
-    layer.ctx.drawImage(srcCanvas, 0, 0);
+    layer.ctx.drawImage(src, px, py);
+
+    // Select the pasted region
+    doc.selection.setRect(px, py, pw, ph);
+
     bus.emit('layers:changed');
     bus.emit('canvas:dirty');
+  }
+
+  _pasteInternalCanvas(srcCanvas) {
+    if (!this.doc) return;
+    this._pasteAtPosition(srcCanvas, srcCanvas.width, srcCanvas.height);
   }
 
   _pasteImageBlob(blob) {
     const url = URL.createObjectURL(blob);
     const img = new Image();
     img.onload = () => {
-      // Store dimensions for new image dialog
       bus._lastClipboardSize = { width: img.width, height: img.height };
-      const doc = this.doc;
-      if (doc) {
-        // Expand canvas if image is larger (top-left anchor)
-        const needW = Math.max(doc.width, img.width);
-        const needH = Math.max(doc.height, img.height);
-        if (needW > doc.width || needH > doc.height) {
-          doc.saveStructureState();
-          doc.resizeCanvas(needW, needH, 0, 0);
-          document.getElementById('status-size').textContent = `${doc.width} x ${doc.height}`;
-        } else {
-          doc.saveStructureState();
-        }
-        // Paste as new layer in current document
-        const layer = doc.addLayer('Pasted');
-        layer.ctx.drawImage(img, 0, 0);
-        bus.emit('layers:changed');
-        bus.emit('canvas:dirty');
+      if (this.doc) {
+        this._pasteAtPosition(img, img.width, img.height);
       } else {
-        // No document open — create one from the image
         bus.emit('doc:new', img.width, img.height, 'Pasted', 'transparent');
-        // Wait for doc to be created, then draw
         setTimeout(() => {
           const newDoc = this.doc;
           if (newDoc) {
