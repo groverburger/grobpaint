@@ -488,7 +488,8 @@ export class DocManager {
 
     // Update status bar
     document.getElementById('status-size').textContent = `${doc.width} x ${doc.height}`;
-    document.getElementById('status-zoom').textContent = Math.round(doc.zoom * 100) + '%';
+    document.getElementById('zoom-input').value = Math.round(doc.zoom * 100);
+    document.getElementById('zoom-slider').value = Math.round(Math.log(doc.zoom / 0.05) / Math.log(32 / 0.05) * 100);
   }
 
   closeDoc(index) {
@@ -1047,7 +1048,8 @@ export class ScaleImageDialog {
 
     const vp = document.getElementById('viewport').getBoundingClientRect();
     doc.fitInView(vp.width, vp.height);
-    document.getElementById('status-zoom').textContent = Math.round(doc.zoom * 100) + '%';
+    document.getElementById('zoom-input').value = Math.round(doc.zoom * 100);
+    document.getElementById('zoom-slider').value = Math.round(Math.log(doc.zoom / 0.05) / Math.log(32 / 0.05) * 100);
     this.hide();
   }
 }

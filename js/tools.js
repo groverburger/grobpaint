@@ -1615,6 +1615,11 @@ export class ToolManager {
 
     bus.on('tool:set', name => this.setTool(name));
     bus.on('tool:set-by-key', key => {
+      // S cycles between selection tools
+      if (key === 's' && (this._toolName === 'select' || this._toolName === 'wand')) {
+        this.setTool(this._toolName === 'select' ? 'wand' : 'select');
+        return;
+      }
       const name = this._keyMap[key];
       if (name) this.setTool(name);
     });

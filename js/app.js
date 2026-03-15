@@ -35,6 +35,7 @@ class App {
     this._initToolbox();
     this._initClipboard();
     this._initGrid();
+    this._initZoom();
 
     // Eagerly detect server availability so file dialogs work on first click
     this._hasServer();
@@ -262,21 +263,21 @@ class App {
       const my = e.clientY - rect.top;
 
       if (e.ctrlKey) {
-        // Pinch-to-zoom (trackpad) — smooth continuous zoom
-        const factor = Math.exp(-e.deltaY * 0.01);
+        // Pinch-to-zoom (trackpad) or Ctrl+scroll wheel
+        // Clamp deltaY so discrete wheel steps don't zoom too aggressively
+        const clamped = Math.max(-3, Math.min(3, e.deltaY));
+        const factor = Math.exp(-clamped * 0.1);
         const newZoom = Math.max(0.05, Math.min(32, doc.zoom * factor));
         doc.panX = mx - (mx - doc.panX) * (newZoom / doc.zoom);
         doc.panY = my - (my - doc.panY) * (newZoom / doc.zoom);
         doc.zoom = newZoom;
-        document.getElementById('status-zoom').textContent = Math.round(doc.zoom * 100) + '%';
+        this._syncZoomUI();
         bus.emit('canvas:dirty');
       } else if (e.deltaMode === 0 && (Math.abs(e.deltaX) > 0 || Math.abs(e.deltaY) > 0)) {
-        // Two-finger trackpad scroll or mouse wheel
-        // Trackpad scroll events have deltaMode 0 and often have deltaX
-        // Mouse wheel: deltaX is 0, deltaY is large discrete steps
+        // Two-finger trackpad scroll: usually has deltaX or small deltaY
+        // Mouse wheel: deltaX is 0, deltaY is large discrete steps (100+)
         const isTrackpadPan = Math.abs(e.deltaX) > 0 || Math.abs(e.deltaY) < 40;
         if (isTrackpadPan) {
-          // Pan with two-finger scroll
           doc.panX -= e.deltaX;
           doc.panY -= e.deltaY;
           bus.emit('canvas:dirty');
@@ -287,7 +288,7 @@ class App {
           doc.panX = mx - (mx - doc.panX) * (newZoom / doc.zoom);
           doc.panY = my - (my - doc.panY) * (newZoom / doc.zoom);
           doc.zoom = newZoom;
-          document.getElementById('status-zoom').textContent = Math.round(doc.zoom * 100) + '%';
+          this._syncZoomUI();
           bus.emit('canvas:dirty');
         }
       }
@@ -426,6 +427,54 @@ class App {
     bus.on('grid:toggle', () => {
       toggle.checked = this.renderer.gridEnabled;
     });
+  }
+
+  _initZoom() {
+    const input = document.getElementById('zoom-input');
+    const slider = document.getElementById('zoom-slider');
+
+    input.addEventListener('change', () => {
+      const doc = this.doc;
+      if (!doc) return;
+      let val = parseInt(input.value);
+      if (isNaN(val) || val < 5) val = 5;
+      if (val > 3200) val = 3200;
+      const vp = document.getElementById('viewport').getBoundingClientRect();
+      const cx = vp.width / 2, cy = vp.height / 2;
+      const newZoom = val / 100;
+      doc.panX = cx - (cx - doc.panX) * (newZoom / doc.zoom);
+      doc.panY = cy - (cy - doc.panY) * (newZoom / doc.zoom);
+      doc.zoom = newZoom;
+      this._syncZoomUI();
+      bus.emit('canvas:dirty');
+    });
+
+    // Logarithmic slider: maps 0-100 range to 5%-3200% zoom
+    slider.addEventListener('input', () => {
+      const doc = this.doc;
+      if (!doc) return;
+      const t = slider.value / 100;
+      const newZoom = 0.05 * Math.pow(32 / 0.05, t);
+      const vp = document.getElementById('viewport').getBoundingClientRect();
+      const cx = vp.width / 2, cy = vp.height / 2;
+      doc.panX = cx - (cx - doc.panX) * (newZoom / doc.zoom);
+      doc.panY = cy - (cy - doc.panY) * (newZoom / doc.zoom);
+      doc.zoom = newZoom;
+      this._syncZoomUI(true); // skip slider to avoid feedback loop
+      bus.emit('canvas:dirty');
+    });
+  }
+
+  _syncZoomUI(skipSlider) {
+    const doc = this.doc;
+    if (!doc) return;
+    const pct = Math.round(doc.zoom * 100);
+    document.getElementById('zoom-input').value = pct;
+    if (!skipSlider) {
+      // Inverse of logarithmic mapping
+      const t = Math.log(doc.zoom / 0.05) / Math.log(32 / 0.05);
+      document.getElementById('zoom-slider').value = Math.round(t * 100);
+    }
   }
 
   async pasteFromClipboard() {
@@ -710,7 +759,7 @@ class App {
     document.getElementById('status-size').textContent = `${doc.width} x ${doc.height}`;
     const vp = document.getElementById('viewport').getBoundingClientRect();
     doc.fitInView(vp.width, vp.height);
-    document.getElementById('status-zoom').textContent = Math.round(doc.zoom * 100) + '%';
+    this._syncZoomUI();
   }
 
   /** Export all layers as a horizontal sprite sheet PNG */
@@ -775,7 +824,7 @@ class App {
     // Re-fit in viewport
     const vp = document.getElementById('viewport').getBoundingClientRect();
     doc.fitInView(vp.width, vp.height);
-    document.getElementById('status-zoom').textContent = Math.round(doc.zoom * 100) + '%';
+    this._syncZoomUI();
   }
 
   showScaleImageDialog() {
@@ -797,7 +846,7 @@ class App {
     this.doc.panX = cx - (cx - this.doc.panX) * (newZoom / this.doc.zoom);
     this.doc.panY = cy - (cy - this.doc.panY) * (newZoom / this.doc.zoom);
     this.doc.zoom = newZoom;
-    document.getElementById('status-zoom').textContent = Math.round(this.doc.zoom * 100) + '%';
+    this._syncZoomUI();
     bus.emit('canvas:dirty');
   }
 
@@ -810,7 +859,7 @@ class App {
     this.doc.panX = cx - (cx - this.doc.panX) * (newZoom / this.doc.zoom);
     this.doc.panY = cy - (cy - this.doc.panY) * (newZoom / this.doc.zoom);
     this.doc.zoom = newZoom;
-    document.getElementById('status-zoom').textContent = Math.round(this.doc.zoom * 100) + '%';
+    this._syncZoomUI();
     bus.emit('canvas:dirty');
   }
 
@@ -818,18 +867,17 @@ class App {
     if (!this.doc) return;
     const vp = document.getElementById('viewport').getBoundingClientRect();
     this.doc.fitInView(vp.width, vp.height);
-    document.getElementById('status-zoom').textContent = Math.round(this.doc.zoom * 100) + '%';
+    this._syncZoomUI();
     bus.emit('canvas:dirty');
   }
 
   actualSize() {
     if (!this.doc) return;
     const vp = document.getElementById('viewport').getBoundingClientRect();
-    const oldZoom = this.doc.zoom;
     this.doc.zoom = 1;
     this.doc.panX = (vp.width - this.doc.width) / 2;
     this.doc.panY = (vp.height - this.doc.height) / 2;
-    document.getElementById('status-zoom').textContent = '100%';
+    this._syncZoomUI();
     bus.emit('canvas:dirty');
   }
 

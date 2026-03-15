@@ -583,6 +583,31 @@ body {
   font-size: 11px;
   font-family: inherit;
 }
+#status-zoom {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+#zoom-input {
+  width: 42px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 1px 3px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-family: inherit;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+#zoom-input::-webkit-inner-spin-button,
+#zoom-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+#zoom-slider {
+  width: 60px;
+  height: 12px;
+  accent-color: var(--accent);
+  margin-left: 4px;
+}
 
 /* ===== Dialog ===== */
 #dialog-overlay {
