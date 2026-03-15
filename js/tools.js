@@ -1,4 +1,4 @@
-// ===== GrobPaint Tools — all 11 tools + ToolManager =====
+// ===== GrobPaint Tools + ToolManager =====
 
 import { bus } from './core.js';
 
@@ -964,57 +964,113 @@ export class MagicWandTool extends Tool {
   }
 }
 
-// ===== Move =====
+// ===== Move Pixels (M, toggle with Move Selection) =====
 
-export class MoveTool extends Tool {
+export class MovePixelsTool extends Tool {
   constructor() {
     super('Move', 'm');
-    this._active = false;   // has cut content into buffer
-    this._dragging = false;  // currently dragging (move or handle-scale)
-    this._handleDrag = null; // which handle is being dragged (null = move)
+    this._active = false;
     this._buffer = null;
-    this._startX = 0;
-    this._startY = 0;
-    // Current destination rect (doc coords)
-    this._destX = 0;
-    this._destY = 0;
-    this._destW = 0;
-    this._destH = 0;
-    // Snapshot of dest rect at drag start (for handle resize)
-    this._dragOrigBounds = null;
+    this._bufferW = 0;
+    this._bufferH = 0;
+    // Transform state (center-based)
+    this._tx = 0; this._ty = 0;
+    this._scaleX = 1; this._scaleY = 1;
+    this._rotation = 0;
+    // Drag state
+    this._dragging = false;
+    this._dragMode = null; // 'move' | 'handle' | 'rotate'
+    this._dragHandle = null;
+    this._dragStartX = 0; this._dragStartY = 0;
+    this._dragStartTx = 0; this._dragStartTy = 0;
+    this._dragStartScaleX = 0; this._dragStartScaleY = 0;
+    this._dragStartRotation = 0;
+    this._dragStartAngle = 0;
   }
 
-  activate() {
-    document.getElementById('viewport').style.cursor = 'move';
-  }
-
+  activate() { document.getElementById('viewport').style.cursor = 'move'; }
   deactivate() {
     document.getElementById('viewport').style.cursor = 'crosshair';
-    if (this._active) this._commit();
+    if (this._active) this.commit();
   }
 
-  /** Get the current bounding box of the moved/scaled content */
-  _getBounds() {
-    return { x: this._destX, y: this._destY, w: this._destW, h: this._destH };
+  _getCorners() {
+    const hw = this._bufferW / 2 * this._scaleX;
+    const hh = this._bufferH / 2 * this._scaleY;
+    const cos = Math.cos(this._rotation), sin = Math.sin(this._rotation);
+    return [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([lx, ly]) => ({
+      x: this._tx + lx * cos - ly * sin,
+      y: this._ty + lx * sin + ly * cos,
+    }));
   }
 
-  /** Cut content from the layer into the buffer */
+  _getHandles() {
+    const hw = this._bufferW / 2 * this._scaleX;
+    const hh = this._bufferH / 2 * this._scaleY;
+    const cos = Math.cos(this._rotation), sin = Math.sin(this._rotation);
+    const pts = [
+      { id: 'nw', lx: -hw, ly: -hh }, { id: 'n', lx: 0, ly: -hh },
+      { id: 'ne', lx: hw, ly: -hh },  { id: 'e', lx: hw, ly: 0 },
+      { id: 'se', lx: hw, ly: hh },   { id: 's', lx: 0, ly: hh },
+      { id: 'sw', lx: -hw, ly: hh },  { id: 'w', lx: -hw, ly: 0 },
+    ];
+    return pts.map(p => ({
+      id: p.id,
+      x: this._tx + p.lx * cos - p.ly * sin,
+      y: this._ty + p.lx * sin + p.ly * cos,
+    }));
+  }
+
+  _getRotationHandle(zoom) {
+    const hh = this._bufferH / 2 * this._scaleY;
+    const cos = Math.cos(this._rotation), sin = Math.sin(this._rotation);
+    const topX = this._tx + hh * sin;
+    const topY = this._ty - hh * cos;
+    const offset = 25 / zoom;
+    return { x: topX + sin * offset, y: topY - cos * offset };
+  }
+
+  _isInsideBounds(x, y) {
+    const dx = x - this._tx, dy = y - this._ty;
+    const cos = Math.cos(-this._rotation), sin = Math.sin(-this._rotation);
+    const lx = dx * cos - dy * sin;
+    const ly = dx * sin + dy * cos;
+    return Math.abs(lx) <= this._bufferW / 2 * this._scaleX &&
+           Math.abs(ly) <= this._bufferH / 2 * this._scaleY;
+  }
+
+  _hitTest(doc, x, y) {
+    const z = doc.zoom;
+    const threshold = 7;
+    const smx = x * z + doc.panX, smy = y * z + doc.panY;
+    // Rotation handle
+    const rh = this._getRotationHandle(z);
+    const rhx = rh.x * z + doc.panX, rhy = rh.y * z + doc.panY;
+    if (Math.hypot(smx - rhx, smy - rhy) < threshold) return { mode: 'rotate' };
+    // Resize handles
+    for (const h of this._getHandles()) {
+      const sx = h.x * z + doc.panX, sy = h.y * z + doc.panY;
+      if (Math.abs(smx - sx) < threshold && Math.abs(smy - sy) < threshold)
+        return { mode: 'handle', handle: h };
+    }
+    // Interior
+    if (this._isInsideBounds(x, y)) return { mode: 'move' };
+    return null;
+  }
+
   _cutContent(doc) {
     const layer = doc.activeLayer;
     if (!layer || !layer.visible) return false;
     doc.saveDrawState();
-
     const sel = doc.selection;
-    if (sel.active && sel.bounds) {
-      const { x: sx, y: sy, w: sw, h: sh } = sel.bounds;
-      this._destX = sx; this._destY = sy;
-      this._destW = sw; this._destH = sh;
+    let sx, sy, sw, sh;
 
+    if (sel.active && sel.bounds) {
+      ({ x: sx, y: sy, w: sw, h: sh } = sel.bounds);
       this._buffer = document.createElement('canvas');
       this._buffer.width = sw; this._buffer.height = sh;
       const bctx = this._buffer.getContext('2d');
       bctx.drawImage(layer.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-
       if (sel.mask) {
         const bufData = bctx.getImageData(0, 0, sw, sh);
         const layerData = layer.ctx.getImageData(sx, sy, sw, sh);
@@ -1035,549 +1091,661 @@ export class MoveTool extends Tool {
         layer.ctx.clearRect(sx, sy, sw, sh);
       }
     } else {
-      this._destX = 0; this._destY = 0;
-      this._destW = doc.width; this._destH = doc.height;
+      sx = 0; sy = 0; sw = doc.width; sh = doc.height;
       this._buffer = document.createElement('canvas');
-      this._buffer.width = doc.width; this._buffer.height = doc.height;
+      this._buffer.width = sw; this._buffer.height = sh;
       this._buffer.getContext('2d').drawImage(layer.canvas, 0, 0);
       layer.clear();
     }
+
+    this._bufferW = sw; this._bufferH = sh;
+    this._tx = sx + sw / 2; this._ty = sy + sh / 2;
+    this._scaleX = 1; this._scaleY = 1; this._rotation = 0;
     this._active = true;
     bus.emit('canvas:dirty');
     return true;
   }
 
-  /** Commit the buffer back to the layer */
-  _commit() {
+  commit() {
     if (!this._active || !this._buffer) return;
     const doc = bus._app?.doc;
     if (!doc) return;
-    const layer = doc.activeLayer;
-    const dx = Math.round(this._destX);
-    const dy = Math.round(this._destY);
-    const dw = Math.max(1, Math.round(this._destW));
-    const dh = Math.max(1, Math.round(this._destH));
-
-    const interp = bus._interpolation || 'nearest';
-    layer.ctx.imageSmoothingEnabled = interp !== 'nearest';
-    if (interp === 'bicubic') layer.ctx.imageSmoothingQuality = 'high';
-    else layer.ctx.imageSmoothingQuality = 'low';
-    layer.ctx.drawImage(this._buffer, dx, dy, dw, dh);
-    layer.ctx.imageSmoothingEnabled = false;
-
-    // Update selection to match
-    if (doc.selection.active && doc.selection.bounds) {
-      doc.selection.setRect(dx, dy, dw, dh);
-    }
-
-    this._buffer = null;
-    this._active = false;
-    bus.emit('canvas:dirty');
-  }
-
-  onPointerDown(doc, x, y, e) {
-    // If we already have content in the buffer, check for handle or interior click
-    if (this._active && this._buffer) {
-      const bounds = this._getBounds();
-      const handle = hitHandle(doc, bounds, x, y);
-      if (handle) {
-        // Start handle-based scale
-        this._dragging = true;
-        this._handleDrag = handle;
-        this._startX = x; this._startY = y;
-        this._dragOrigBounds = { ...bounds };
-        return;
-      }
-      // Check if clicking inside the bounds (move)
-      if (x >= bounds.x && x <= bounds.x + bounds.w &&
-          y >= bounds.y && y <= bounds.y + bounds.h) {
-        this._dragging = true;
-        this._handleDrag = null;
-        this._startX = x; this._startY = y;
-        this._dragOrigBounds = { ...bounds };
-        return;
-      }
-      // Clicked outside: commit current transform, then start fresh
-      this._commit();
-    }
-
-    // Cut content and start move
-    if (this._cutContent(doc)) {
-      this._dragging = true;
-      this._handleDrag = null;
-      this._startX = x; this._startY = y;
-      this._dragOrigBounds = { ...this._getBounds() };
-    }
-  }
-
-  onPointerMove(doc, x, y, e) {
-    if (!this._dragging) {
-      // Hover cursor
-      if (this._active) {
-        const handle = hitHandle(doc, this._getBounds(), x, y);
-        if (handle) {
-          document.getElementById('viewport').style.cursor = handle.cursor;
-          return;
-        }
-        const b = this._getBounds();
-        if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
-          document.getElementById('viewport').style.cursor = 'move';
-          return;
-        }
-      }
-      document.getElementById('viewport').style.cursor = 'move';
-      return;
-    }
-
-    const dx = x - this._startX;
-    const dy = y - this._startY;
-
-    if (this._handleDrag) {
-      // Handle-based scale
-      const nb = applyHandleDrag(this._handleDrag.id, this._dragOrigBounds, dx, dy);
-      this._destX = nb.x; this._destY = nb.y;
-      this._destW = nb.w; this._destH = nb.h;
-    } else {
-      // Move
-      let ox = dx, oy = dy;
-      if (e.shiftKey) {
-        if (Math.abs(ox) >= Math.abs(oy)) oy = 0;
-        else ox = 0;
-      }
-      this._destX = this._dragOrigBounds.x + ox;
-      this._destY = this._dragOrigBounds.y + oy;
-    }
-    bus.emit('canvas:dirty');
-  }
-
-  onPointerUp(doc, x, y, e) {
-    if (!this._dragging) return;
-    this._dragging = false;
-    this._handleDrag = null;
-    // Don't commit yet — keep handles visible for further adjustments
-    bus.emit('canvas:dirty');
-  }
-
-  onOverlay(ctx, doc) {
-    if (!this._active || !this._buffer) return;
-    const z = doc.zoom;
-    const dx = Math.round(this._destX) * z + doc.panX;
-    const dy = Math.round(this._destY) * z + doc.panY;
-    const dw = Math.max(1, Math.round(this._destW)) * z;
-    const dh = Math.max(1, Math.round(this._destH)) * z;
-
-    const interp = bus._interpolation || 'nearest';
-    ctx.imageSmoothingEnabled = interp !== 'nearest';
-    if (interp === 'bicubic') ctx.imageSmoothingQuality = 'high';
-    else ctx.imageSmoothingQuality = 'low';
-    ctx.globalAlpha = 0.7;
-    ctx.drawImage(this._buffer, dx, dy, dw, dh);
-    ctx.imageSmoothingEnabled = false;
-    ctx.globalAlpha = 1;
-
-    // Bounding box outline
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-    ctx.setLineDash([4, 4]);
-    ctx.lineWidth = 1;
-    ctx.strokeRect(dx + 0.5, dy + 0.5, dw, dh);
-    ctx.setLineDash([]);
-
-    // Handles
-    drawHandles(ctx, doc, this._getBounds());
-  }
-}
-
-// ===== Rotate =====
-
-export class RotateTool extends Tool {
-  constructor() {
-    super('Rotate', '');
-    this._rotating = false;
-    this._buffer = null;
-    this._angle = 0;
-    this._centerX = 0;
-    this._centerY = 0;
-    this._startAngle = 0;
-    this._originX = 0;
-    this._originY = 0;
-    this._bufW = 0;
-    this._bufH = 0;
-  }
-
-  activate() {
-    document.getElementById('viewport').style.cursor = 'grab';
-  }
-
-  deactivate() {
-    document.getElementById('viewport').style.cursor = 'crosshair';
-    if (this._rotating) this._cancel();
-  }
-
-  _cancel() {
-    this._rotating = false;
-    this._buffer = null;
-  }
-
-  onPointerDown(doc, x, y, e) {
-    const layer = doc.activeLayer;
-    if (!layer || !layer.visible) return;
-    doc.saveDrawState();
-    this._rotating = true;
-    this._angle = 0;
-
-    const sel = doc.selection;
-    if (sel.active && sel.bounds) {
-      const { x: sx, y: sy, w: sw, h: sh } = sel.bounds;
-      this._originX = sx;
-      this._originY = sy;
-      this._bufW = sw;
-      this._bufH = sh;
-      this._centerX = sx + sw / 2;
-      this._centerY = sy + sh / 2;
-
-      this._buffer = document.createElement('canvas');
-      this._buffer.width = sw;
-      this._buffer.height = sh;
-      const bctx = this._buffer.getContext('2d');
-      bctx.drawImage(layer.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-
-      if (sel.mask) {
-        const bufData = bctx.getImageData(0, 0, sw, sh);
-        const layerData = layer.ctx.getImageData(sx, sy, sw, sh);
-        const bd = bufData.data;
-        const ld = layerData.data;
-        for (let row = 0; row < sh; row++) {
-          for (let col = 0; col < sw; col++) {
-            const pi = (row * sw + col) * 4;
-            if (sel.isSelected(col + sx, row + sy)) {
-              ld[pi] = 0; ld[pi+1] = 0; ld[pi+2] = 0; ld[pi+3] = 0;
-            } else {
-              bd[pi] = 0; bd[pi+1] = 0; bd[pi+2] = 0; bd[pi+3] = 0;
-            }
-          }
-        }
-        bctx.putImageData(bufData, 0, 0);
-        layer.ctx.putImageData(layerData, sx, sy);
-      } else {
-        layer.ctx.clearRect(sx, sy, sw, sh);
-      }
-    } else {
-      this._originX = 0;
-      this._originY = 0;
-      this._bufW = doc.width;
-      this._bufH = doc.height;
-      this._centerX = doc.width / 2;
-      this._centerY = doc.height / 2;
-
-      this._buffer = document.createElement('canvas');
-      this._buffer.width = doc.width;
-      this._buffer.height = doc.height;
-      this._buffer.getContext('2d').drawImage(layer.canvas, 0, 0);
-      layer.clear();
-    }
-
-    this._startAngle = Math.atan2(y - this._centerY, x - this._centerX);
-    bus.emit('canvas:dirty');
-  }
-
-  onPointerMove(doc, x, y, e) {
-    if (!this._rotating) return;
-    const cur = Math.atan2(y - this._centerY, x - this._centerX);
-    this._angle = cur - this._startAngle;
-    // Shift: snap to 45° increments
-    if (e.shiftKey) {
-      const snap = Math.PI / 4;
-      this._angle = Math.round(this._angle / snap) * snap;
-    }
-    bus.emit('canvas:dirty');
-  }
-
-  onPointerUp(doc) {
-    if (!this._rotating || !this._buffer) return;
-    this._rotating = false;
-
     const layer = doc.activeLayer;
     const ctx = layer.ctx;
-    ctx.save();
-    ctx.translate(this._centerX, this._centerY);
-    ctx.rotate(this._angle);
-    ctx.drawImage(this._buffer, -this._bufW / 2, -this._bufH / 2);
-    ctx.restore();
-
-    // Clear selection since rotated content no longer matches the rect
-    if (doc.selection.active) doc.selection.clear();
-
-    this._buffer = null;
-    bus.emit('canvas:dirty');
-  }
-
-  onOverlay(ctx, doc) {
-    if (!this._rotating || !this._buffer) return;
-    const z = doc.zoom;
-    const cx = this._centerX * z + doc.panX;
-    const cy = this._centerY * z + doc.panY;
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(this._angle);
-    ctx.imageSmoothingEnabled = false;
-    ctx.globalAlpha = 0.7;
-    ctx.drawImage(this._buffer,
-      -this._bufW * z / 2, -this._bufH * z / 2,
-      this._bufW * z, this._bufH * z);
-    ctx.restore();
-
-    // Rotation center dot
-    ctx.fillStyle = 'white';
-    ctx.strokeStyle = 'black';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-
-    // Angle readout
-    const deg = Math.round(this._angle * 180 / Math.PI * 10) / 10;
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(cx + 10, cy - 20, 52, 18);
-    ctx.fillStyle = 'white';
-    ctx.font = '11px sans-serif';
-    ctx.fillText(deg + '°', cx + 14, cy - 7);
-
-    ctx.globalAlpha = 1;
-  }
-}
-
-// ===== Scale =====
-
-export class ScaleTool extends Tool {
-  constructor() {
-    super('Scale', '');
-    this._active = false;    // has cut content into buffer
-    this._dragging = false;  // currently dragging a handle
-    this._handleDrag = null; // which handle is being dragged
-    this._buffer = null;
-    this._startX = 0;
-    this._startY = 0;
-    // Current destination rect (doc coords)
-    this._destX = 0;
-    this._destY = 0;
-    this._destW = 0;
-    this._destH = 0;
-    this._dragOrigBounds = null;
-  }
-
-  activate() {
-    document.getElementById('viewport').style.cursor = 'nwse-resize';
-  }
-
-  deactivate() {
-    document.getElementById('viewport').style.cursor = 'crosshair';
-    if (this._active) this._commit();
-  }
-
-  _getBounds() {
-    return { x: this._destX, y: this._destY, w: this._destW, h: this._destH };
-  }
-
-  /** Cut content from the layer into the buffer */
-  _cutContent(doc) {
-    const layer = doc.activeLayer;
-    if (!layer || !layer.visible) return false;
-    doc.saveDrawState();
-
-    const sel = doc.selection;
-    if (sel.active && sel.bounds) {
-      const { x: sx, y: sy, w: sw, h: sh } = sel.bounds;
-      this._destX = sx; this._destY = sy;
-      this._destW = sw; this._destH = sh;
-
-      this._buffer = document.createElement('canvas');
-      this._buffer.width = sw; this._buffer.height = sh;
-      const bctx = this._buffer.getContext('2d');
-      bctx.drawImage(layer.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-
-      if (sel.mask) {
-        const bufData = bctx.getImageData(0, 0, sw, sh);
-        const layerData = layer.ctx.getImageData(sx, sy, sw, sh);
-        const bd = bufData.data, ld = layerData.data;
-        for (let row = 0; row < sh; row++) {
-          for (let col = 0; col < sw; col++) {
-            const pi = (row * sw + col) * 4;
-            if (sel.isSelected(col + sx, row + sy)) {
-              ld[pi] = 0; ld[pi+1] = 0; ld[pi+2] = 0; ld[pi+3] = 0;
-            } else {
-              bd[pi] = 0; bd[pi+1] = 0; bd[pi+2] = 0; bd[pi+3] = 0;
-            }
-          }
-        }
-        bctx.putImageData(bufData, 0, 0);
-        layer.ctx.putImageData(layerData, sx, sy);
-      } else {
-        layer.ctx.clearRect(sx, sy, sw, sh);
-      }
-    } else {
-      this._destX = 0; this._destY = 0;
-      this._destW = doc.width; this._destH = doc.height;
-      this._buffer = document.createElement('canvas');
-      this._buffer.width = doc.width; this._buffer.height = doc.height;
-      this._buffer.getContext('2d').drawImage(layer.canvas, 0, 0);
-      layer.clear();
-    }
-    this._active = true;
-    bus.emit('canvas:dirty');
-    return true;
-  }
-
-  /** Commit the buffer back to the layer */
-  _commit() {
-    if (!this._active || !this._buffer) return;
-    const doc = bus._app?.doc;
-    if (!doc) return;
-    const layer = doc.activeLayer;
-    const dx = Math.round(this._destX);
-    const dy = Math.round(this._destY);
-    const dw = Math.max(1, Math.round(this._destW));
-    const dh = Math.max(1, Math.round(this._destH));
-
     const interp = bus._interpolation || 'nearest';
-    layer.ctx.imageSmoothingEnabled = interp !== 'nearest';
-    if (interp === 'bicubic') layer.ctx.imageSmoothingQuality = 'high';
-    else layer.ctx.imageSmoothingQuality = 'low';
-    layer.ctx.drawImage(this._buffer, dx, dy, dw, dh);
-    layer.ctx.imageSmoothingEnabled = false;
-
-    if (doc.selection.active && doc.selection.bounds) {
-      doc.selection.setRect(dx, dy, dw, dh);
+    ctx.imageSmoothingEnabled = interp !== 'nearest';
+    if (interp === 'bicubic') ctx.imageSmoothingQuality = 'high';
+    else ctx.imageSmoothingQuality = 'low';
+    ctx.save();
+    ctx.translate(this._tx, this._ty);
+    ctx.rotate(this._rotation);
+    ctx.scale(this._scaleX, this._scaleY);
+    ctx.drawImage(this._buffer, -this._bufferW / 2, -this._bufferH / 2);
+    ctx.restore();
+    ctx.imageSmoothingEnabled = false;
+    // Update selection to AABB of transformed content
+    if (doc.selection.active) {
+      const corners = this._getCorners();
+      const xs = corners.map(c => c.x), ys = corners.map(c => c.y);
+      doc.selection.setRect(
+        Math.floor(Math.min(...xs)), Math.floor(Math.min(...ys)),
+        Math.ceil(Math.max(...xs)) - Math.floor(Math.min(...xs)),
+        Math.ceil(Math.max(...ys)) - Math.floor(Math.min(...ys)));
     }
+    this._buffer = null; this._active = false;
+    bus.emit('canvas:dirty');
+  }
 
-    this._buffer = null;
-    this._active = false;
+  cancel() {
+    if (!this._active) return;
+    this._active = false; this._buffer = null; this._dragging = false;
+    const doc = bus._app?.doc;
+    if (doc) doc.undo();
     bus.emit('canvas:dirty');
   }
 
   onPointerDown(doc, x, y, e) {
-    // If we already have content in the buffer, check for handle click
     if (this._active && this._buffer) {
-      const bounds = this._getBounds();
-      const handle = hitHandle(doc, bounds, x, y);
-      if (handle) {
+      const hit = this._hitTest(doc, x, y);
+      if (hit) {
         this._dragging = true;
-        this._handleDrag = handle;
-        this._startX = x; this._startY = y;
-        this._dragOrigBounds = { ...bounds };
+        this._dragMode = hit.mode;
+        this._dragHandle = hit.handle || null;
+        this._dragStartX = x; this._dragStartY = y;
+        this._dragStartTx = this._tx; this._dragStartTy = this._ty;
+        this._dragStartScaleX = this._scaleX; this._dragStartScaleY = this._scaleY;
+        this._dragStartRotation = this._rotation;
+        if (hit.mode === 'rotate') {
+          this._dragStartAngle = Math.atan2(y - this._ty, x - this._tx);
+        }
         return;
       }
-      // Clicked outside handles: commit current transform, then start fresh
-      this._commit();
+      // Clicked outside: commit and start fresh
+      this.commit();
     }
-
-    // Cut content and start with default SE handle drag
+    // Determine drag mode from where user clicked on the preview handles
+    const previewHit = this._hitTestSelection(doc, x, y);
     if (this._cutContent(doc)) {
       this._dragging = true;
-      // Default: drag from SE corner
-      this._handleDrag = { id: 'se', cursor: 'nwse-resize' };
-      this._startX = x; this._startY = y;
-      this._dragOrigBounds = { ...this._getBounds() };
+      this._dragStartX = x; this._dragStartY = y;
+      this._dragStartTx = this._tx; this._dragStartTy = this._ty;
+      this._dragStartScaleX = this._scaleX; this._dragStartScaleY = this._scaleY;
+      this._dragStartRotation = this._rotation;
+      if (previewHit && previewHit.mode === 'handle') {
+        this._dragMode = 'handle';
+        this._dragHandle = previewHit.handle;
+      } else if (previewHit && previewHit.mode === 'rotate') {
+        this._dragMode = 'rotate';
+        this._dragHandle = null;
+        this._dragStartAngle = Math.atan2(y - this._ty, x - this._tx);
+      } else {
+        this._dragMode = 'move';
+        this._dragHandle = null;
+      }
+    }
+  }
+
+  /** Get preview bounds from selection (before buffer is cut) */
+  _previewFromSelection(doc) {
+    const sel = doc.selection;
+    if (sel.active && sel.bounds) return sel.bounds;
+    return { x: 0, y: 0, w: doc.width, h: doc.height };
+  }
+
+  /** Hit-test against selection bounds (before buffer is cut) */
+  _hitTestSelection(doc, x, y) {
+    const b = this._previewFromSelection(doc);
+    const z = doc.zoom, threshold = 7;
+    const smx = x * z + doc.panX, smy = y * z + doc.panY;
+    const topCx = b.x + b.w / 2, topCy = b.y;
+    const offset = 25 / z;
+    const rhx = topCx, rhy = topCy - offset;
+    if (Math.hypot(smx - (rhx * z + doc.panX), smy - (rhy * z + doc.panY)) < threshold)
+      return { mode: 'rotate' };
+    const handles = getHandles(b);
+    for (const h of handles) {
+      const sx = h.x * z + doc.panX, sy = h.y * z + doc.panY;
+      if (Math.abs(smx - sx) < threshold && Math.abs(smy - sy) < threshold)
+        return { mode: 'handle', handle: h };
+    }
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h)
+      return { mode: 'move' };
+    return null;
+  }
+
+  onPointerMove(doc, x, y, e) {
+    if (!this._dragging) {
+      const vp = document.getElementById('viewport');
+      if (this._active) {
+        const hit = this._hitTest(doc, x, y);
+        if (!hit) vp.style.cursor = 'move';
+        else if (hit.mode === 'rotate') vp.style.cursor = 'grab';
+        else if (hit.mode === 'move') vp.style.cursor = 'move';
+        else vp.style.cursor = 'nwse-resize';
+      } else {
+        const hit = this._hitTestSelection(doc, x, y);
+        if (!hit) vp.style.cursor = 'move';
+        else if (hit.mode === 'rotate') vp.style.cursor = 'grab';
+        else if (hit.mode === 'move') vp.style.cursor = 'move';
+        else vp.style.cursor = 'nwse-resize';
+      }
+      return;
+    }
+    const mdx = x - this._dragStartX, mdy = y - this._dragStartY;
+    if (this._dragMode === 'move') {
+      let ox = mdx, oy = mdy;
+      if (e.shiftKey) {
+        // Snap to nearest 45-degree direction
+        const angle = Math.atan2(oy, ox);
+        const snap = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+        const dist = Math.sqrt(ox * ox + oy * oy);
+        ox = dist * Math.cos(snap);
+        oy = dist * Math.sin(snap);
+      }
+      this._tx = this._dragStartTx + ox;
+      this._ty = this._dragStartTy + oy;
+    } else if (this._dragMode === 'rotate') {
+      const cur = Math.atan2(y - this._ty, x - this._tx);
+      this._rotation = this._dragStartRotation + (cur - this._dragStartAngle);
+      if (e.shiftKey) {
+        const snap = Math.PI / 12; // 15 degrees
+        this._rotation = Math.round(this._rotation / snap) * snap;
+      }
+    } else if (this._dragMode === 'handle') {
+      const cos = Math.cos(this._rotation), sin = Math.sin(this._rotation);
+      const ldx = mdx * cos + mdy * sin;
+      const ldy = -mdx * sin + mdy * cos;
+      const hw = this._bufferW / 2 * this._dragStartScaleX;
+      const hh = this._bufferH / 2 * this._dragStartScaleY;
+      let newLeft = -hw, newRight = hw, newTop = -hh, newBottom = hh;
+      const hid = this._dragHandle.id;
+      if (hid.includes('e')) newRight += ldx;
+      if (hid.includes('w')) newLeft += ldx;
+      if (hid.includes('s')) newBottom += ldy;
+      if (hid.includes('n')) newTop += ldy;
+      let newW = newRight - newLeft, newH = newBottom - newTop;
+      // Shift: proportional resize anchored to opposite corner/edge
+      if (e.shiftKey && this._bufferW > 0 && this._bufferH > 0) {
+        const aspect = this._bufferW / this._bufferH;
+        if (hid === 'n' || hid === 's') {
+          newW = Math.abs(newH) * aspect;
+          const anchorY = hid === 'n' ? newBottom : newTop;
+          newLeft = -newW / 2; newRight = newW / 2;
+          if (hid === 'n') { newTop = anchorY - newH; newBottom = anchorY; }
+          else { newBottom = anchorY + newH; newTop = anchorY; }
+        } else if (hid === 'e' || hid === 'w') {
+          newH = Math.abs(newW) / aspect;
+          const anchorX = hid === 'e' ? newLeft : newRight;
+          newTop = -newH / 2; newBottom = newH / 2;
+          if (hid === 'e') { newRight = anchorX + newW; newLeft = anchorX; }
+          else { newLeft = anchorX - newW; newRight = anchorX; }
+        } else {
+          // Corner: uniform scale, anchor opposite corner
+          const sx = Math.abs(newW) / this._bufferW;
+          const sy = Math.abs(newH) / this._bufferH;
+          const s = Math.max(sx, sy);
+          newW = this._bufferW * s * Math.sign(newW || 1);
+          newH = this._bufferH * s * Math.sign(newH || 1);
+          // Anchor the opposite corner
+          const anchorX = hid.includes('e') ? newLeft : newRight;
+          const anchorY = hid.includes('s') ? newTop : newBottom;
+          if (hid.includes('e')) { newRight = anchorX + newW; newLeft = anchorX; }
+          else { newLeft = anchorX - Math.abs(newW); newRight = anchorX; }
+          if (hid.includes('s')) { newBottom = anchorY + newH; newTop = anchorY; }
+          else { newTop = anchorY - Math.abs(newH); newBottom = anchorY; }
+        }
+      }
+      this._scaleX = Math.max(0.01, Math.abs(newW) / this._bufferW);
+      this._scaleY = Math.max(0.01, Math.abs(newH) / this._bufferH);
+      const localCenterX = (newLeft + newRight) / 2;
+      const localCenterY = (newTop + newBottom) / 2;
+      this._tx = this._dragStartTx + localCenterX * cos - localCenterY * sin;
+      this._ty = this._dragStartTy + localCenterX * sin + localCenterY * cos;
+    }
+    bus.emit('canvas:dirty');
+  }
+
+  onPointerUp() {
+    if (!this._dragging) return;
+    this._dragging = false;
+    this._dragMode = null; this._dragHandle = null;
+    bus.emit('canvas:dirty');
+  }
+
+  onOverlay(ctx, doc) {
+    if (!this._active || !this._buffer) {
+      // Preview: show handles around selection or full canvas
+      const b = this._previewFromSelection(doc);
+      if (b.w > 0 && b.h > 0) {
+        const z = doc.zoom;
+        drawHandles(ctx, doc, b);
+        // Rotation handle
+        const topCx = b.x + b.w / 2, topCy = b.y;
+        const offset = 25 / z;
+        const rhx = topCx * z + doc.panX, rhy = (topCy - offset) * z + doc.panY;
+        const thx = topCx * z + doc.panX, thy = topCy * z + doc.panY;
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(thx, thy); ctx.lineTo(rhx, rhy); ctx.stroke();
+        ctx.fillStyle = 'white'; ctx.strokeStyle = '#333';
+        ctx.beginPath(); ctx.arc(rhx, rhy, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
+      return;
+    }
+    const z = doc.zoom;
+    // Draw floating buffer
+    ctx.save();
+    ctx.translate(this._tx * z + doc.panX, this._ty * z + doc.panY);
+    ctx.rotate(this._rotation);
+    ctx.scale(this._scaleX, this._scaleY);
+    const interp = bus._interpolation || 'nearest';
+    ctx.imageSmoothingEnabled = interp !== 'nearest';
+    if (interp === 'bicubic') ctx.imageSmoothingQuality = 'high';
+    else ctx.imageSmoothingQuality = 'low';
+    ctx.globalAlpha = 0.85;
+    ctx.drawImage(this._buffer,
+      -this._bufferW * z / 2, -this._bufferH * z / 2,
+      this._bufferW * z, this._bufferH * z);
+    ctx.restore();
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = 1;
+    // Bounding outline
+    const corners = this._getCorners();
+    const sc = corners.map(c => ({ x: c.x * z + doc.panX, y: c.y * z + doc.panY }));
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(sc[0].x, sc[0].y);
+    for (let i = 1; i < 4; i++) ctx.lineTo(sc[i].x, sc[i].y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Resize handles
+    const handles = this._getHandles();
+    const hSize = 5;
+    ctx.fillStyle = 'white'; ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+    for (const h of handles) {
+      const sx = Math.round(h.x * z + doc.panX), sy = Math.round(h.y * z + doc.panY);
+      ctx.fillRect(sx - hSize, sy - hSize, hSize * 2, hSize * 2);
+      ctx.strokeRect(sx - hSize, sy - hSize, hSize * 2, hSize * 2);
+    }
+    // Rotation handle + line
+    const rh = this._getRotationHandle(z);
+    const rhx = rh.x * z + doc.panX, rhy = rh.y * z + doc.panY;
+    const topH = handles.find(h => h.id === 'n');
+    const thx = topH.x * z + doc.panX, thy = topH.y * z + doc.panY;
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(thx, thy); ctx.lineTo(rhx, rhy); ctx.stroke();
+    ctx.fillStyle = 'white'; ctx.strokeStyle = '#333';
+    ctx.beginPath(); ctx.arc(rhx, rhy, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    // Angle readout while rotating
+    if (this._dragging && this._dragMode === 'rotate') {
+      const deg = Math.round(this._rotation * 180 / Math.PI * 10) / 10;
+      const cx = this._tx * z + doc.panX, cy = this._ty * z + doc.panY;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(cx + 10, cy - 20, 52, 18);
+      ctx.fillStyle = 'white'; ctx.font = '11px sans-serif';
+      ctx.fillText(deg + '\u00B0', cx + 14, cy - 7);
+    }
+    // Size readout while resizing
+    if (this._dragging && this._dragMode === 'handle') {
+      const nw = Math.max(1, Math.round(this._bufferW * this._scaleX));
+      const nh = Math.max(1, Math.round(this._bufferH * this._scaleY));
+      const maxSx = Math.max(...sc.map(c => c.x));
+      const minSy = Math.min(...sc.map(c => c.y));
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(maxSx + 4, minSy - 2, 80, 18);
+      ctx.fillStyle = 'white'; ctx.font = '11px sans-serif';
+      ctx.fillText(`${nw} x ${nh}`, maxSx + 8, minSy + 11);
+    }
+  }
+}
+
+// ===== Move Selection (toggle with M) =====
+
+export class MoveSelectionTool extends Tool {
+  constructor() {
+    super('MoveSelection', '');
+    this._active = false;
+    this._dragging = false;
+    this._dragMode = null;
+    this._dragHandle = null;
+    // Original selection snapshot
+    this._origMask = null;
+    this._origBounds = null;
+    this._origW = 0; this._origH = 0;
+    // Transform
+    this._tx = 0; this._ty = 0;
+    this._scaleX = 1; this._scaleY = 1;
+    this._rotation = 0;
+    // Drag start
+    this._dragStartX = 0; this._dragStartY = 0;
+    this._dragStartTx = 0; this._dragStartTy = 0;
+    this._dragStartScaleX = 0; this._dragStartScaleY = 0;
+    this._dragStartRotation = 0;
+    this._dragStartAngle = 0;
+  }
+
+  activate() { document.getElementById('viewport').style.cursor = 'move'; }
+  deactivate() {
+    document.getElementById('viewport').style.cursor = 'crosshair';
+    if (this._active) this.commit();
+  }
+
+  _getCorners() {
+    const hw = this._origW / 2 * this._scaleX;
+    const hh = this._origH / 2 * this._scaleY;
+    const cos = Math.cos(this._rotation), sin = Math.sin(this._rotation);
+    return [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([lx, ly]) => ({
+      x: this._tx + lx * cos - ly * sin,
+      y: this._ty + lx * sin + ly * cos,
+    }));
+  }
+
+  _getHandles() {
+    const hw = this._origW / 2 * this._scaleX;
+    const hh = this._origH / 2 * this._scaleY;
+    const cos = Math.cos(this._rotation), sin = Math.sin(this._rotation);
+    const pts = [
+      { id: 'nw', lx: -hw, ly: -hh }, { id: 'n', lx: 0, ly: -hh },
+      { id: 'ne', lx: hw, ly: -hh },  { id: 'e', lx: hw, ly: 0 },
+      { id: 'se', lx: hw, ly: hh },   { id: 's', lx: 0, ly: hh },
+      { id: 'sw', lx: -hw, ly: hh },  { id: 'w', lx: -hw, ly: 0 },
+    ];
+    return pts.map(p => ({
+      id: p.id,
+      x: this._tx + p.lx * cos - p.ly * sin,
+      y: this._ty + p.lx * sin + p.ly * cos,
+    }));
+  }
+
+  _getRotationHandle(zoom) {
+    const hh = this._origH / 2 * this._scaleY;
+    const cos = Math.cos(this._rotation), sin = Math.sin(this._rotation);
+    const topX = this._tx + hh * sin;
+    const topY = this._ty - hh * cos;
+    const offset = 25 / zoom;
+    return { x: topX + sin * offset, y: topY - cos * offset };
+  }
+
+  _isInsideBounds(x, y) {
+    const dx = x - this._tx, dy = y - this._ty;
+    const cos = Math.cos(-this._rotation), sin = Math.sin(-this._rotation);
+    const lx = dx * cos - dy * sin, ly = dx * sin + dy * cos;
+    return Math.abs(lx) <= this._origW / 2 * this._scaleX &&
+           Math.abs(ly) <= this._origH / 2 * this._scaleY;
+  }
+
+  _hitTest(doc, x, y) {
+    const z = doc.zoom, threshold = 7;
+    const smx = x * z + doc.panX, smy = y * z + doc.panY;
+    const rh = this._getRotationHandle(z);
+    if (Math.hypot(smx - (rh.x * z + doc.panX), smy - (rh.y * z + doc.panY)) < threshold)
+      return { mode: 'rotate' };
+    for (const h of this._getHandles()) {
+      const sx = h.x * z + doc.panX, sy = h.y * z + doc.panY;
+      if (Math.abs(smx - sx) < threshold && Math.abs(smy - sy) < threshold)
+        return { mode: 'handle', handle: h };
+    }
+    if (this._isInsideBounds(x, y)) return { mode: 'move' };
+    return null;
+  }
+
+  _initFromSelection(doc) {
+    const sel = doc.selection;
+    if (!sel.active || !sel.bounds) return false;
+    this._origMask = sel.mask ? new Uint8Array(sel.mask) : null;
+    this._origBounds = { ...sel.bounds };
+    this._origW = sel.bounds.w; this._origH = sel.bounds.h;
+    this._tx = sel.bounds.x + sel.bounds.w / 2;
+    this._ty = sel.bounds.y + sel.bounds.h / 2;
+    this._scaleX = 1; this._scaleY = 1; this._rotation = 0;
+    this._active = true;
+    return true;
+  }
+
+  _applyTransformToSelection(doc) {
+    const sel = doc.selection;
+    const W = doc.width, H = doc.height;
+    const newMask = new Uint8Array(W * H);
+    const cos = Math.cos(-this._rotation), sin = Math.sin(-this._rotation);
+    const invSx = 1 / this._scaleX, invSy = 1 / this._scaleY;
+    const origCx = this._origBounds.x + this._origW / 2;
+    const origCy = this._origBounds.y + this._origH / 2;
+    // Compute AABB of transformed selection for iteration bounds
+    const corners = this._getCorners();
+    const xs = corners.map(c => c.x), ys = corners.map(c => c.y);
+    const minPx = Math.max(0, Math.floor(Math.min(...xs)) - 1);
+    const maxPx = Math.min(W - 1, Math.ceil(Math.max(...xs)) + 1);
+    const minPy = Math.max(0, Math.floor(Math.min(...ys)) - 1);
+    const maxPy = Math.min(H - 1, Math.ceil(Math.max(...ys)) + 1);
+    let bMinX = W, bMaxX = 0, bMinY = H, bMaxY = 0;
+    let found = false;
+    for (let py = minPy; py <= maxPy; py++) {
+      for (let px = minPx; px <= maxPx; px++) {
+        const dx = px - this._tx, dy = py - this._ty;
+        const rx = dx * cos - dy * sin, ry = dx * sin + dy * cos;
+        const origX = Math.round(rx * invSx + origCx);
+        const origY = Math.round(ry * invSy + origCy);
+        if (origX < this._origBounds.x || origX >= this._origBounds.x + this._origW ||
+            origY < this._origBounds.y || origY >= this._origBounds.y + this._origH) continue;
+        const selected = this._origMask
+          ? this._origMask[origY * W + origX] : true;
+        if (selected) {
+          newMask[py * W + px] = 1;
+          if (px < bMinX) bMinX = px; if (px > bMaxX) bMaxX = px;
+          if (py < bMinY) bMinY = py; if (py > bMaxY) bMaxY = py;
+          found = true;
+        }
+      }
+    }
+    if (found) {
+      sel.mask = newMask;
+      sel.bounds = { x: bMinX, y: bMinY, w: bMaxX - bMinX + 1, h: bMaxY - bMinY + 1 };
+      sel.active = true;
+    } else {
+      sel.clear();
+    }
+  }
+
+  commit() {
+    if (!this._active) return;
+    this._active = false;
+    bus.emit('canvas:dirty');
+  }
+
+  cancel() {
+    if (!this._active) return;
+    const doc = bus._app?.doc;
+    if (doc && doc.selection) {
+      if (this._origMask) {
+        doc.selection.mask = new Uint8Array(this._origMask);
+        doc.selection.bounds = { ...this._origBounds };
+        doc.selection.active = true;
+      } else {
+        doc.selection.setRect(this._origBounds.x, this._origBounds.y,
+          this._origBounds.w, this._origBounds.h);
+      }
+    }
+    this._active = false;
+    bus.emit('canvas:dirty');
+  }
+
+  /** Hit-test against selection bounds (before active) */
+  _hitTestSelection(doc, x, y) {
+    const sel = doc.selection;
+    if (!sel.active || !sel.bounds) return null;
+    const b = sel.bounds;
+    const z = doc.zoom, threshold = 7;
+    const smx = x * z + doc.panX, smy = y * z + doc.panY;
+    const topCx = b.x + b.w / 2, topCy = b.y;
+    const offset = 25 / z;
+    const rhx = topCx, rhy = topCy - offset;
+    if (Math.hypot(smx - (rhx * z + doc.panX), smy - (rhy * z + doc.panY)) < threshold)
+      return { mode: 'rotate' };
+    const handles = getHandles(b);
+    for (const h of handles) {
+      const sx = h.x * z + doc.panX, sy = h.y * z + doc.panY;
+      if (Math.abs(smx - sx) < threshold && Math.abs(smy - sy) < threshold)
+        return { mode: 'handle', handle: h };
+    }
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h)
+      return { mode: 'move' };
+    return null;
+  }
+
+  onPointerDown(doc, x, y, e) {
+    if (this._active) {
+      const hit = this._hitTest(doc, x, y);
+      if (hit) {
+        this._dragging = true;
+        this._dragMode = hit.mode;
+        this._dragHandle = hit.handle || null;
+        this._dragStartX = x; this._dragStartY = y;
+        this._dragStartTx = this._tx; this._dragStartTy = this._ty;
+        this._dragStartScaleX = this._scaleX; this._dragStartScaleY = this._scaleY;
+        this._dragStartRotation = this._rotation;
+        if (hit.mode === 'rotate') {
+          this._dragStartAngle = Math.atan2(y - this._ty, x - this._tx);
+        }
+        return;
+      }
+      this.commit();
+    }
+    // Check what was clicked on the preview handles before initializing
+    const previewHit = this._hitTestSelection(doc, x, y);
+    if (this._initFromSelection(doc)) {
+      this._dragging = true;
+      this._dragStartX = x; this._dragStartY = y;
+      this._dragStartTx = this._tx; this._dragStartTy = this._ty;
+      this._dragStartScaleX = this._scaleX; this._dragStartScaleY = this._scaleY;
+      this._dragStartRotation = this._rotation;
+      if (previewHit && previewHit.mode === 'handle') {
+        this._dragMode = 'handle';
+        this._dragHandle = previewHit.handle;
+      } else if (previewHit && previewHit.mode === 'rotate') {
+        this._dragMode = 'rotate';
+        this._dragHandle = null;
+        this._dragStartAngle = Math.atan2(y - this._ty, x - this._tx);
+      } else {
+        this._dragMode = 'move';
+        this._dragHandle = null;
+      }
     }
   }
 
   onPointerMove(doc, x, y, e) {
     if (!this._dragging) {
-      // Hover cursor
+      const vp = document.getElementById('viewport');
       if (this._active) {
-        const handle = hitHandle(doc, this._getBounds(), x, y);
-        document.getElementById('viewport').style.cursor = handle ? handle.cursor : 'nwse-resize';
+        const hit = this._hitTest(doc, x, y);
+        if (!hit) vp.style.cursor = 'move';
+        else if (hit.mode === 'rotate') vp.style.cursor = 'grab';
+        else if (hit.mode === 'move') vp.style.cursor = 'move';
+        else vp.style.cursor = 'nwse-resize';
+      } else {
+        const hit = this._hitTestSelection(doc, x, y);
+        if (!hit) vp.style.cursor = 'move';
+        else if (hit.mode === 'rotate') vp.style.cursor = 'grab';
+        else if (hit.mode === 'move') vp.style.cursor = 'move';
+        else vp.style.cursor = 'nwse-resize';
       }
       return;
     }
-
-    const dx = x - this._startX;
-    const dy = y - this._startY;
-    let nb = applyHandleDrag(this._handleDrag.id, this._dragOrigBounds, dx, dy);
-
-    // Shift: constrain proportions
-    if (e.shiftKey && this._dragOrigBounds.w > 0 && this._dragOrigBounds.h > 0) {
-      const aspect = this._dragOrigBounds.w / this._dragOrigBounds.h;
-      const hid = this._handleDrag.id;
-      if (hid === 'n' || hid === 's') {
-        nb.w = nb.h * aspect;
-      } else if (hid === 'e' || hid === 'w') {
-        nb.h = nb.w / aspect;
-      } else {
-        // Corner: use the larger scale factor
-        const sx = nb.w / this._dragOrigBounds.w;
-        const sy = nb.h / this._dragOrigBounds.h;
-        const s = Math.max(sx, sy);
-        nb.w = this._dragOrigBounds.w * s;
-        nb.h = this._dragOrigBounds.h * s;
+    const mdx = x - this._dragStartX, mdy = y - this._dragStartY;
+    if (this._dragMode === 'move') {
+      let ox = mdx, oy = mdy;
+      if (e.shiftKey) {
+        const angle = Math.atan2(oy, ox);
+        const snap = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+        const dist = Math.sqrt(ox * ox + oy * oy);
+        ox = dist * Math.cos(snap);
+        oy = dist * Math.sin(snap);
       }
+      this._tx = this._dragStartTx + ox;
+      this._ty = this._dragStartTy + oy;
+    } else if (this._dragMode === 'rotate') {
+      const cur = Math.atan2(y - this._ty, x - this._tx);
+      this._rotation = this._dragStartRotation + (cur - this._dragStartAngle);
+      if (e.shiftKey) {
+        const snap = Math.PI / 12;
+        this._rotation = Math.round(this._rotation / snap) * snap;
+      }
+    } else if (this._dragMode === 'handle') {
+      const cos = Math.cos(this._rotation), sin = Math.sin(this._rotation);
+      const ldx = mdx * cos + mdy * sin, ldy = -mdx * sin + mdy * cos;
+      const hw = this._origW / 2 * this._dragStartScaleX;
+      const hh = this._origH / 2 * this._dragStartScaleY;
+      let newLeft = -hw, newRight = hw, newTop = -hh, newBottom = hh;
+      const hid = this._dragHandle.id;
+      if (hid.includes('e')) newRight += ldx;
+      if (hid.includes('w')) newLeft += ldx;
+      if (hid.includes('s')) newBottom += ldy;
+      if (hid.includes('n')) newTop += ldy;
+      let newW = newRight - newLeft, newH = newBottom - newTop;
+      this._scaleX = Math.max(0.01, Math.abs(newW) / this._origW);
+      this._scaleY = Math.max(0.01, Math.abs(newH) / this._origH);
+      const localCenterX = (newLeft + newRight) / 2, localCenterY = (newTop + newBottom) / 2;
+      this._tx = this._dragStartTx + localCenterX * cos - localCenterY * sin;
+      this._ty = this._dragStartTy + localCenterX * sin + localCenterY * cos;
     }
-
-    this._destX = nb.x; this._destY = nb.y;
-    this._destW = nb.w; this._destH = nb.h;
+    this._applyTransformToSelection(doc);
     bus.emit('canvas:dirty');
   }
 
-  onPointerUp(doc, x, y, e) {
+  onPointerUp() {
     if (!this._dragging) return;
     this._dragging = false;
-    this._handleDrag = null;
-    // Don't commit yet — keep handles visible for further adjustments
+    this._dragMode = null; this._dragHandle = null;
     bus.emit('canvas:dirty');
   }
 
   onOverlay(ctx, doc) {
-    if (!this._active || !this._buffer) return;
-    const z = doc.zoom;
-    const dx = Math.round(this._destX) * z + doc.panX;
-    const dy = Math.round(this._destY) * z + doc.panY;
-    const dw = Math.max(1, Math.round(this._destW)) * z;
-    const dh = Math.max(1, Math.round(this._destH)) * z;
-
-    const interp = bus._interpolation || 'nearest';
-    ctx.imageSmoothingEnabled = interp !== 'nearest';
-    if (interp === 'bicubic') ctx.imageSmoothingQuality = 'high';
-    else ctx.imageSmoothingQuality = 'low';
-    ctx.globalAlpha = 0.7;
-    ctx.drawImage(this._buffer, dx, dy, dw, dh);
-    ctx.imageSmoothingEnabled = false;
-    ctx.globalAlpha = 1;
-
-    // Bounding box outline
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-    ctx.setLineDash([4, 4]);
-    ctx.lineWidth = 1;
-    ctx.strokeRect(dx + 0.5, dy + 0.5, dw, dh);
-    ctx.setLineDash([]);
-
-    // Handles
-    drawHandles(ctx, doc, this._getBounds());
-
-    // Size readout
-    const nw = Math.max(1, Math.round(this._destW));
-    const nh = Math.max(1, Math.round(this._destH));
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(dx + dw + 4, dy - 2, 80, 18);
-    ctx.fillStyle = 'white';
-    ctx.font = '11px sans-serif';
-    ctx.fillText(`${nw} x ${nh}`, dx + dw + 8, dy + 11);
-  }
-}
-
-// ===== Mirror =====
-
-export class MirrorTool extends Tool {
-  constructor() {
-    super('Mirror', '');
-  }
-
-  onPointerDown(doc, x, y, e) {
-    if (e.button === 2) {
-      bus.emit('flip:vertical');
-    } else {
-      bus.emit('flip:horizontal');
+    if (!this._active) {
+      // Preview: show handles around selection
+      const sel = doc.selection;
+      if (sel.active && sel.bounds) {
+        const z = doc.zoom;
+        drawHandles(ctx, doc, sel.bounds);
+        const b = sel.bounds;
+        const topCx = b.x + b.w / 2, topCy = b.y;
+        const offset = 25 / z;
+        const rhx = topCx * z + doc.panX, rhy = (topCy - offset) * z + doc.panY;
+        const thx = topCx * z + doc.panX, thy = topCy * z + doc.panY;
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(thx, thy); ctx.lineTo(rhx, rhy); ctx.stroke();
+        ctx.fillStyle = 'white'; ctx.strokeStyle = '#333';
+        ctx.beginPath(); ctx.arc(rhx, rhy, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
+      return;
     }
+    const z = doc.zoom;
+    // Bounding outline
+    const corners = this._getCorners();
+    const sc = corners.map(c => ({ x: c.x * z + doc.panX, y: c.y * z + doc.panY }));
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(sc[0].x, sc[0].y);
+    for (let i = 1; i < 4; i++) ctx.lineTo(sc[i].x, sc[i].y);
+    ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+    // Handles
+    const handles = this._getHandles();
+    const hSize = 5;
+    ctx.fillStyle = 'white'; ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+    for (const h of handles) {
+      const sx = Math.round(h.x * z + doc.panX), sy = Math.round(h.y * z + doc.panY);
+      ctx.fillRect(sx - hSize, sy - hSize, hSize * 2, hSize * 2);
+      ctx.strokeRect(sx - hSize, sy - hSize, hSize * 2, hSize * 2);
+    }
+    // Rotation handle
+    const rh = this._getRotationHandle(z);
+    const rhx = rh.x * z + doc.panX, rhy = rh.y * z + doc.panY;
+    const topH = handles.find(h => h.id === 'n');
+    const thx = topH.x * z + doc.panX, thy = topH.y * z + doc.panY;
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(thx, thy); ctx.lineTo(rhx, rhy); ctx.stroke();
+    ctx.fillStyle = 'white'; ctx.strokeStyle = '#333';
+    ctx.beginPath(); ctx.arc(rhx, rhy, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
 }
 
@@ -1603,13 +1771,13 @@ export class ToolManager {
       new FillTool(), new EyedropperTool(), new LineTool(),
       new RectangleTool(), new EllipseTool(), new TextTool(),
       new SelectRectTool(), new MagicWandTool(),
-      new MoveTool(), new RotateTool(), new ScaleTool(), new MirrorTool(),
+      new MovePixelsTool(), new MoveSelectionTool(),
     ];
     for (const t of all) this.tools[t.name.toLowerCase()] = t;
 
     // Tool name to key mapping for toolbox buttons
     this._keyMap = {};
-    for (const t of all) this._keyMap[t.key] = t.name.toLowerCase();
+    for (const t of all) if (t.key) this._keyMap[t.key] = t.name.toLowerCase();
 
     this.setTool('pencil');
 
@@ -1618,6 +1786,11 @@ export class ToolManager {
       // S cycles between selection tools
       if (key === 's' && (this._toolName === 'select' || this._toolName === 'wand')) {
         this.setTool(this._toolName === 'select' ? 'wand' : 'select');
+        return;
+      }
+      // M cycles between move tools
+      if (key === 'm' && (this._toolName === 'move' || this._toolName === 'moveselection')) {
+        this.setTool(this._toolName === 'move' ? 'moveselection' : 'move');
         return;
       }
       const name = this._keyMap[key];
@@ -1637,10 +1810,14 @@ export class ToolManager {
 
     // Update toolbox UI
     document.querySelectorAll('.tool-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.tool === name);
+      const btnTool = btn.dataset.tool;
+      const isActive = btnTool === name ||
+        (btnTool === 'move' && name === 'moveselection');
+      btn.classList.toggle('active', isActive);
     });
-    document.getElementById('status-tool').textContent =
-      this.activeTool ? this.activeTool.name : '';
+    const displayName = name === 'moveselection' ? 'Move Selection' :
+      (this.activeTool ? this.activeTool.name : '');
+    document.getElementById('status-tool').textContent = displayName;
   }
 
   getOptions() {

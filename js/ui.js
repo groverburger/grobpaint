@@ -661,8 +661,8 @@ export class ToolOptionsBar {
       bar.appendChild(this._group('Mode:', modeSelect));
     }
 
-    // Interpolation (scale)
-    if (toolName === 'scale') {
+    // Interpolation (move tools)
+    if (toolName === 'move' || toolName === 'moveselection') {
       const interpSelect = document.createElement('select');
       for (const [val, label] of [['nearest', 'Nearest Neighbor'], ['bilinear', 'Bilinear'], ['bicubic', 'Bicubic']]) {
         const opt = document.createElement('option');
@@ -672,20 +672,6 @@ export class ToolOptionsBar {
       }
       interpSelect.addEventListener('change', () => bus._interpolation = interpSelect.value);
       bar.appendChild(this._group('Resample:', interpSelect));
-    }
-
-    // Mirror buttons
-    if (toolName === 'mirror') {
-      const btnH = document.createElement('button');
-      btnH.textContent = 'Flip Horizontal';
-      btnH.className = 'tool-option-btn';
-      btnH.addEventListener('click', () => bus.emit('flip:horizontal'));
-      bar.appendChild(btnH);
-      const btnV = document.createElement('button');
-      btnV.textContent = 'Flip Vertical';
-      btnV.className = 'tool-option-btn';
-      btnV.addEventListener('click', () => bus.emit('flip:vertical'));
-      bar.appendChild(btnV);
     }
 
     // Font (text)

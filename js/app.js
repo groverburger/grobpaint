@@ -371,6 +371,14 @@ class App {
           e.preventDefault();
           this._deleteSelection();
           break;
+        case 'enter':
+          e.preventDefault();
+          if (this.toolManager.activeTool?.commit) this.toolManager.activeTool.commit();
+          break;
+        case 'escape':
+          e.preventDefault();
+          if (this.toolManager.activeTool?.cancel) this.toolManager.activeTool.cancel();
+          break;
       }
     });
   }
@@ -568,13 +576,13 @@ class App {
 
   undo() {
     if (!this.doc) return;
-    // Cancel any active transform tool (move/scale) so its floating buffer
+    // Cancel any active transform tool so its floating buffer
     // doesn't get committed on top of the restored state
     const tool = this.toolManager.activeTool;
-    if (tool && tool._active && tool._buffer) {
+    if (tool && tool._active) {
       tool._active = false;
       tool._dragging = false;
-      tool._buffer = null;
+      if (tool._buffer) tool._buffer = null;
     }
     if (this.doc.undo()) {
       bus.emit('canvas:dirty');
@@ -585,10 +593,10 @@ class App {
   redo() {
     if (!this.doc) return;
     const tool = this.toolManager.activeTool;
-    if (tool && tool._active && tool._buffer) {
+    if (tool && tool._active) {
       tool._active = false;
       tool._dragging = false;
-      tool._buffer = null;
+      if (tool._buffer) tool._buffer = null;
     }
     if (this.doc.redo()) {
       bus.emit('canvas:dirty');

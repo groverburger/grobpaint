@@ -11,8 +11,8 @@ Paint.NET doesn't run on macOS. GrobPaint fills that gap: a lightweight image ed
 ## Features
 
 - **Layers** - add, delete, duplicate, merge, reorder, per-layer opacity and blend modes (16 modes)
-- **Tools** - Pencil, Brush, Eraser, Fill, Eyedropper, Line, Rectangle, Ellipse, Text, Select, Magic Wand, Move, Rotate, Scale, Mirror
-- **Selection** - rectangular and magic wand with configurable tolerance, copy/cut/paste, crop to selection
+- **Tools** - Pencil, Brush, Eraser, Fill, Eyedropper, Line, Rectangle, Ellipse, Text, Select, Magic Wand, Move Pixels, Move Selection
+- **Selection** - rectangular and magic wand with configurable tolerance, move/resize/rotate selections and content, copy/cut/paste, crop to selection
 - **Color** - HSV picker, RGB/Hex input, alpha channel, palettes (Lospec 500, PICO-8), swap primary/secondary
 - **Canvas** - zoom (scroll wheel, pinch, keyboard), pan (space+drag, middle-click, trackpad), fit-to-view, grid overlay
 - **File I/O** - PNG, JPEG, BMP, GIF; native `.gbp` project format preserves layers as a ZIP archive
