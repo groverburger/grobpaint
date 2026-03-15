@@ -19,6 +19,7 @@
   <div class="menu-item" data-menu="file">File</div>
   <div class="menu-item" data-menu="edit">Edit</div>
   <div class="menu-item" data-menu="image">Image</div>
+  <div class="menu-item" data-menu="adjustments">Adjustments</div>
   <div class="menu-item" data-menu="view">View</div>
 </div>
 
@@ -174,6 +175,12 @@
         <button id="btn-layer-merge" title="Merge down">&#x21A7;</button>
       </div>
     </div>
+
+    <!-- History Section -->
+    <div id="history-section">
+      <div id="history-header"><span>History</span></div>
+      <div id="history-list"></div>
+    </div>
   </div>
 </div>
 
@@ -183,6 +190,7 @@
   <span id="status-size">0 x 0</span>
   <span id="status-zoom"><input type="number" id="zoom-input" value="100" min="5" max="3200" title="Zoom %">%<input type="range" id="zoom-slider" min="0" max="100" value="50" title="Zoom"></span>
   <span id="status-tool">Pencil</span>
+  <span id="status-help"></span>
   <span class="status-spacer"></span>
   <span id="status-grid" class="status-grid">
     <label><input type="checkbox" id="grid-toggle"> Grid</label>
@@ -301,8 +309,8 @@
   <div class="dialog">
     <h3>Brightness / Contrast</h3>
     <div class="dialog-body">
-      <div class="dialog-row"><label>Brightness:</label><input type="range" id="bc-brightness" min="-100" max="100" value="0"><span id="bc-brightness-val" class="adj-val">0</span></div>
-      <div class="dialog-row"><label>Contrast:</label><input type="range" id="bc-contrast" min="-100" max="100" value="0"><span id="bc-contrast-val" class="adj-val">0</span></div>
+      <div class="dialog-row"><label>Brightness:</label><input type="range" id="bc-brightness" min="-100" max="100" value="0"><span id="bc-brightness-val" class="adj-val">0</span><button class="adj-reset" data-target="bc-brightness" data-default="0" title="Reset">&#x21ba;</button></div>
+      <div class="dialog-row"><label>Contrast:</label><input type="range" id="bc-contrast" min="-100" max="100" value="0"><span id="bc-contrast-val" class="adj-val">0</span><button class="adj-reset" data-target="bc-contrast" data-default="0" title="Reset">&#x21ba;</button></div>
     </div>
     <div class="dialog-buttons"><button id="bc-ok">OK</button><button id="bc-cancel">Cancel</button></div>
   </div>
@@ -313,9 +321,9 @@
   <div class="dialog">
     <h3>Hue / Saturation / Lightness</h3>
     <div class="dialog-body">
-      <div class="dialog-row"><label>Hue:</label><input type="range" id="hsl-hue" min="-180" max="180" value="0"><span id="hsl-hue-val" class="adj-val">0</span></div>
-      <div class="dialog-row"><label>Saturation:</label><input type="range" id="hsl-sat" min="-100" max="100" value="0"><span id="hsl-sat-val" class="adj-val">0</span></div>
-      <div class="dialog-row"><label>Lightness:</label><input type="range" id="hsl-light" min="-100" max="100" value="0"><span id="hsl-light-val" class="adj-val">0</span></div>
+      <div class="dialog-row"><label>Hue:</label><input type="range" id="hsl-hue" min="-180" max="180" value="0"><span id="hsl-hue-val" class="adj-val">0</span><button class="adj-reset" data-target="hsl-hue" data-default="0" title="Reset">&#x21ba;</button></div>
+      <div class="dialog-row"><label>Saturation:</label><input type="range" id="hsl-sat" min="-100" max="100" value="0"><span id="hsl-sat-val" class="adj-val">0</span><button class="adj-reset" data-target="hsl-sat" data-default="0" title="Reset">&#x21ba;</button></div>
+      <div class="dialog-row"><label>Lightness:</label><input type="range" id="hsl-light" min="-100" max="100" value="0"><span id="hsl-light-val" class="adj-val">0</span><button class="adj-reset" data-target="hsl-light" data-default="0" title="Reset">&#x21ba;</button></div>
     </div>
     <div class="dialog-buttons"><button id="hsl-ok">OK</button><button id="hsl-cancel">Cancel</button></div>
   </div>
@@ -326,7 +334,7 @@
   <div class="dialog">
     <h3>Gaussian Blur</h3>
     <div class="dialog-body">
-      <div class="dialog-row"><label>Radius:</label><input type="range" id="blur-radius" min="0" max="50" value="0" step="0.5"><span id="blur-radius-val" class="adj-val">0</span></div>
+      <div class="dialog-row"><label>Radius:</label><input type="range" id="blur-radius" min="0" max="50" value="0" step="0.5"><span id="blur-radius-val" class="adj-val">0</span><button class="adj-reset" data-target="blur-radius" data-default="0" title="Reset">&#x21ba;</button></div>
     </div>
     <div class="dialog-buttons"><button id="blur-ok">OK</button><button id="blur-cancel">Cancel</button></div>
   </div>
@@ -337,8 +345,8 @@
   <div class="dialog">
     <h3>Sharpen (Unsharp Mask)</h3>
     <div class="dialog-body">
-      <div class="dialog-row"><label>Radius:</label><input type="range" id="sharpen-radius" min="0.5" max="20" value="1" step="0.5"><span id="sharpen-radius-val" class="adj-val">1</span></div>
-      <div class="dialog-row"><label>Amount:</label><input type="range" id="sharpen-amount" min="0" max="500" value="100"><span id="sharpen-amount-val" class="adj-val">100%</span></div>
+      <div class="dialog-row"><label>Radius:</label><input type="range" id="sharpen-radius" min="0.5" max="20" value="1" step="0.5"><span id="sharpen-radius-val" class="adj-val">1</span><button class="adj-reset" data-target="sharpen-radius" data-default="1" title="Reset">&#x21ba;</button></div>
+      <div class="dialog-row"><label>Amount:</label><input type="range" id="sharpen-amount" min="0" max="500" value="100"><span id="sharpen-amount-val" class="adj-val">100%</span><button class="adj-reset" data-target="sharpen-amount" data-default="100" title="Reset">&#x21ba;</button></div>
     </div>
     <div class="dialog-buttons"><button id="sharpen-ok">OK</button><button id="sharpen-cancel">Cancel</button></div>
   </div>

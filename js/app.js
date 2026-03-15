@@ -3,7 +3,7 @@
 import { bus, Selection } from './core.js';
 import { Renderer } from './renderer.js';
 import { ToolManager } from './tools.js';
-import { ColorSystem, LayersPanel, DocManager, ToolOptionsBar, MenuBar, NewImageDialog, CanvasSizeDialog, ScaleImageDialog, BrightnessContrastDialog, HSLAdjustDialog, GaussianBlurDialog, SharpenDialog } from './ui.js';
+import { ColorSystem, LayersPanel, HistoryPanel, DocManager, ToolOptionsBar, MenuBar, NewImageDialog, CanvasSizeDialog, ScaleImageDialog, BrightnessContrastDialog, HSLAdjustDialog, GaussianBlurDialog, SharpenDialog } from './ui.js';
 
 class App {
   constructor() {
@@ -19,6 +19,7 @@ class App {
     this.toolManager = new ToolManager();
     this.colorSystem = new ColorSystem();
     this.layersPanel = new LayersPanel();
+    this.historyPanel = new HistoryPanel();
     this.docManager = new DocManager();
     this.toolOptions = new ToolOptionsBar();
     this.menuBar = new MenuBar(this);

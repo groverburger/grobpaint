@@ -446,6 +446,55 @@ export class LayersPanel {
   }
 }
 
+// ===== History Panel =====
+
+export class HistoryPanel {
+  constructor() {
+    this._list = document.getElementById('history-list');
+    bus.on('canvas:dirty', () => this.render());
+    bus.on('layers:changed', () => this.render());
+    bus.on('doc:switched', () => this.render());
+  }
+
+  render() {
+    const doc = bus._app?.doc;
+    if (!doc || !this._list) { if (this._list) this._list.innerHTML = ''; return; }
+    const h = doc.history;
+    this._list.innerHTML = '';
+    // "Original" entry at the start
+    const orig = document.createElement('div');
+    orig.className = 'history-item' + (h.index < 0 ? ' active' : '');
+    orig.textContent = 'Original';
+    orig.addEventListener('click', () => {
+      while (h.canUndo()) { doc.undo(); }
+      bus.emit('canvas:dirty');
+      bus.emit('layers:changed');
+    });
+    this._list.appendChild(orig);
+    // History entries
+    for (let i = 0; i < h.states.length; i++) {
+      const entry = document.createElement('div');
+      const state = h.states[i];
+      const label = state.type === 'draw' ? 'Draw' :
+                    state.type === 'structure' ? 'Structure' :
+                    state.type === 'selection' ? 'Selection' : state.type;
+      entry.className = 'history-item' + (i === h.index ? ' active' : '') + (i > h.index ? ' future' : '');
+      entry.textContent = label;
+      entry.addEventListener('click', () => {
+        // Navigate to this history position
+        while (h.index > i) { doc.undo(); }
+        while (h.index < i) { doc.redo(); }
+        bus.emit('canvas:dirty');
+        bus.emit('layers:changed');
+      });
+      this._list.appendChild(entry);
+    }
+    // Auto-scroll to active
+    const active = this._list.querySelector('.active');
+    if (active) active.scrollIntoView({ block: 'nearest' });
+  }
+}
+
 // ===== Document Manager (tabs) =====
 
 export class DocManager {
@@ -936,13 +985,14 @@ export class MenuBar {
         { label: 'Select All', shortcut: 'Ctrl+A', action: () => app.selectAll() },
         { label: 'Deselect', shortcut: 'Ctrl+D', action: () => app.deselect() },
       ];
-      case 'image': return [
+      case 'adjustments': return [
         { label: 'Brightness/Contrast...', action: () => app.showBrightnessContrast() },
         { label: 'Hue/Saturation/Lightness...', action: () => app.showHSLAdjust() },
         { sep: true },
         { label: 'Gaussian Blur...', action: () => app.showGaussianBlur() },
         { label: 'Sharpen...', action: () => app.showSharpen() },
-        { sep: true },
+      ];
+      case 'image': return [
         { label: 'Flip Horizontal', action: () => app.flipHorizontal() },
         { label: 'Flip Vertical', action: () => app.flipVertical() },
         { sep: true },
@@ -1172,8 +1222,19 @@ class AdjustmentDialog {
     this._raf = null;
     document.getElementById(okId).addEventListener('click', () => this._apply());
     document.getElementById(cancelId).addEventListener('click', () => this._cancel());
-    document.getElementById(overlayId).querySelector('.dialog').addEventListener('keydown', e => {
+    const overlay = document.getElementById(overlayId);
+    overlay.querySelector('.dialog').addEventListener('keydown', e => {
       if (e.key === 'Escape') this._cancel();
+    });
+    // Wire up reset buttons
+    overlay.querySelectorAll('.adj-reset').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = document.getElementById(btn.dataset.target);
+        if (target) {
+          target.value = btn.dataset.default;
+          target.dispatchEvent(new Event('input'));
+        }
+      });
     });
     this._overlayId = overlayId;
   }

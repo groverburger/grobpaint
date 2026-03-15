@@ -1678,6 +1678,22 @@ export class ToolManager {
     });
     document.getElementById('status-tool').textContent =
       this.activeTool ? this.activeTool.name : '';
+    const helpTexts = {
+      pencil: 'Click to draw pixels. Hold Shift to constrain to a line.',
+      brush: 'Click and drag to paint. [ ] to change size.',
+      eraser: 'Click and drag to erase. [ ] to change size.',
+      fill: 'Click to flood fill an area. Right-click for secondary color.',
+      eyedropper: 'Click to pick a color from the canvas.',
+      line: 'Click and drag to draw a line. Hold Shift for 45\u00B0 angles.',
+      rectangle: 'Click and drag to draw a rectangle. Hold Shift for square.',
+      ellipse: 'Click and drag to draw an ellipse. Hold Shift for circle.',
+      text: 'Click to place text. Type and click again to commit.',
+      select: 'Click and drag to select a rectangular region.',
+      wand: 'Click to select similar colors. Adjust tolerance in the toolbar.',
+      lasso: 'Click and drag to draw a freehand selection.',
+      move: 'Drag to move, handles to resize, top handle to rotate. Enter to commit.',
+    };
+    document.getElementById('status-help').textContent = helpTexts[name] || '';
   }
 
   getOptions() {
