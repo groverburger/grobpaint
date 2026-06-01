@@ -256,16 +256,24 @@ function drawBrushCursor(ctx, doc, screenX, screenY) {
   const { x: docX, y: docY } = doc.screenToDoc(screenX, screenY);
   const cx = Math.floor(docX), cy = Math.floor(docY);
   const size = bus._brushSize;
-  const rad = size / 2;
-  const ri = Math.ceil(rad);
+  const shape = bus._brushShape || 'circle';
 
   // Build a set of filled pixels
   const pixels = [];
-  for (let dy = -ri; dy <= ri; dy++) {
-    for (let dx = -ri; dx <= ri; dx++) {
-      if (bus._antiAlias || dx * dx + dy * dy <= rad * rad) {
-        // For AA mode, approximate the circle with same pixel test
-        if (!bus._antiAlias || dx * dx + dy * dy <= rad * rad) {
+  if (shape === 'square') {
+    const left = Math.floor(docX - size / 2);
+    const top = Math.floor(docY - size / 2);
+    for (let py = top; py < top + size; py++) {
+      for (let px = left; px < left + size; px++) {
+        pixels.push(px, py);
+      }
+    }
+  } else {
+    const rad = size / 2;
+    const ri = Math.ceil(rad);
+    for (let dy = -ri; dy <= ri; dy++) {
+      for (let dx = -ri; dx <= ri; dx++) {
+        if (dx * dx + dy * dy <= rad * rad) {
           pixels.push(cx + dx, cy + dy);
         }
       }
@@ -437,7 +445,9 @@ export class BrushTool extends Tool {
     if (doc.selection.active) doc.selection.applyClip(ctx);
     ctx.fillStyle = color;
     ctx.globalAlpha = bus._brushAlpha;
-    if (bus._antiAlias) {
+    if ((bus._brushShape || 'circle') === 'square') {
+      ctx.fillRect(Math.floor(x - size / 2), Math.floor(y - size / 2), size, size);
+    } else if (bus._antiAlias) {
       ctx.beginPath();
       ctx.arc(x, y, size / 2, 0, Math.PI * 2);
       ctx.fill();
@@ -518,7 +528,9 @@ export class EraserTool extends Tool {
     if (doc.selection.active) doc.selection.applyClip(ctx);
     ctx.globalCompositeOperation = 'destination-out';
     ctx.globalAlpha = bus._brushAlpha;
-    if (bus._antiAlias) {
+    if ((bus._brushShape || 'circle') === 'square') {
+      ctx.fillRect(Math.floor(x - size / 2), Math.floor(y - size / 2), size, size);
+    } else if (bus._antiAlias) {
       ctx.beginPath();
       ctx.arc(x, y, size / 2, 0, Math.PI * 2);
       ctx.fill();

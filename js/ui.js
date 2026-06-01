@@ -770,6 +770,7 @@ export class ToolOptionsBar {
   constructor() {
     // Init defaults on bus
     bus._brushSize = 3;
+    bus._brushShape = 'circle';
     bus._tolerance = 32;
     bus._antiAlias = true;
     bus._filled = false;
@@ -802,6 +803,15 @@ export class ToolOptionsBar {
     if (['brush', 'eraser', 'line', 'rectangle', 'ellipse'].includes(toolName)) {
       bar.appendChild(this._group('Anti-alias:',
         this._checkbox(bus._antiAlias, v => bus._antiAlias = v)));
+    }
+
+    // Brush tip shape
+    if (['brush', 'eraser'].includes(toolName)) {
+      bar.appendChild(this._group('Shape:',
+        this._shapeToggle(bus._brushShape, v => {
+          bus._brushShape = v;
+          bus.emit('render:overlay');
+        })));
     }
 
     // Filled (rect, ellipse)
@@ -903,6 +913,29 @@ export class ToolOptionsBar {
     input.type = 'checkbox'; input.checked = value;
     input.addEventListener('change', () => onChange(input.checked));
     return input;
+  }
+
+  _shapeToggle(value, onChange) {
+    const wrap = document.createElement('div');
+    wrap.className = 'tool-segmented';
+    for (const [shape, title] of [['circle', 'Circle'], ['square', 'Square']]) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tool-segment';
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
+      btn.classList.toggle('active', value === shape);
+      const icon = document.createElement('span');
+      icon.className = `brush-shape-icon ${shape}`;
+      btn.appendChild(icon);
+      btn.addEventListener('click', () => {
+        onChange(shape);
+        wrap.querySelectorAll('.tool-segment').forEach(segment => segment.classList.remove('active'));
+        btn.classList.add('active');
+      });
+      wrap.appendChild(btn);
+    }
+    return wrap;
   }
 }
 

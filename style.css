@@ -190,6 +190,35 @@ body {
 }
 .tool-option-btn:hover { background: var(--accent); color: #111; border-color: var(--accent); }
 .tool-option-btn:active { background: var(--accent-dark); }
+.tool-segmented {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+}
+.tool-segment {
+  width: 26px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.tool-segment:last-child { border-right: 0; }
+.tool-segment:hover { background: var(--bg-hover); }
+.tool-segment.active { background: var(--accent); color: #111; }
+.brush-shape-icon {
+  display: block;
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+}
+.brush-shape-icon.circle { border-radius: 50%; }
 .tool-option-group {
   display: flex;
   align-items: center;
