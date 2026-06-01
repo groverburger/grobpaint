@@ -1139,6 +1139,17 @@ export class NewImageDialog {
 export class CanvasSizeDialog {
   constructor() {
     this._anchor = 'mc'; // middle-center
+    this._doc = null;
+
+    const wInput = document.getElementById('cs-width');
+    const hInput = document.getElementById('cs-height');
+    const wPercentInput = document.getElementById('cs-width-percent');
+    const hPercentInput = document.getElementById('cs-height-percent');
+
+    wInput.addEventListener('input', () => this._syncPercentFromPixels('width'));
+    hInput.addEventListener('input', () => this._syncPercentFromPixels('height'));
+    wPercentInput.addEventListener('input', () => this._syncPixelsFromPercent('width'));
+    hPercentInput.addEventListener('input', () => this._syncPixelsFromPercent('height'));
 
     document.querySelectorAll('#cs-anchor-grid button').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1165,6 +1176,8 @@ export class CanvasSizeDialog {
     document.getElementById('cs-current').textContent = `${doc.width} x ${doc.height}`;
     document.getElementById('cs-width').value = doc.width;
     document.getElementById('cs-height').value = doc.height;
+    document.getElementById('cs-width-percent').value = 100;
+    document.getElementById('cs-height-percent').value = 100;
     // Reset anchor to center
     document.querySelectorAll('#cs-anchor-grid button').forEach(b => b.classList.remove('active'));
     document.querySelector('#cs-anchor-grid button[data-anchor="mc"]').classList.add('active');
@@ -1176,6 +1189,29 @@ export class CanvasSizeDialog {
   hide() {
     document.getElementById('canvas-size-overlay').classList.add('hidden');
     document.activeElement?.blur();
+  }
+
+  _syncPercentFromPixels(axis) {
+    const doc = this._doc;
+    if (!doc) return;
+    const sizeInput = document.getElementById(axis === 'width' ? 'cs-width' : 'cs-height');
+    const percentInput = document.getElementById(axis === 'width' ? 'cs-width-percent' : 'cs-height-percent');
+    const baseSize = axis === 'width' ? doc.width : doc.height;
+    const size = parseInt(sizeInput.value);
+    if (!Number.isFinite(size) || size < 1) return;
+    const percent = size / baseSize * 100;
+    percentInput.value = Number.isInteger(percent) ? percent : percent.toFixed(2);
+  }
+
+  _syncPixelsFromPercent(axis) {
+    const doc = this._doc;
+    if (!doc) return;
+    const percentInput = document.getElementById(axis === 'width' ? 'cs-width-percent' : 'cs-height-percent');
+    const sizeInput = document.getElementById(axis === 'width' ? 'cs-width' : 'cs-height');
+    const baseSize = axis === 'width' ? doc.width : doc.height;
+    const percent = parseFloat(percentInput.value);
+    if (!Number.isFinite(percent) || percent <= 0) return;
+    sizeInput.value = Math.max(1, Math.round(baseSize * percent / 100));
   }
 
   _apply() {
