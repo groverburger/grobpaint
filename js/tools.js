@@ -1202,6 +1202,7 @@ export class MovePixelsTool extends Tool {
     this._bufferW = 0;
     this._bufferH = 0;
     this._sourceLayer = null; // layer the content was cut from
+    this._hadSelection = false;
     // Transform state (center-based)
     this._tx = 0; this._ty = 0;
     this._scaleX = 1; this._scaleY = 1;
@@ -1238,6 +1239,20 @@ export class MovePixelsTool extends Tool {
       x: Math.round(tx - this._bufferW / 2) + this._bufferW / 2,
       y: Math.round(ty - this._bufferH / 2) + this._bufferH / 2,
     };
+  }
+
+  _getClippedTransformBounds(doc) {
+    const corners = this._getCorners();
+    const xs = corners.map(c => c.x), ys = corners.map(c => c.y);
+    const minX = Math.floor(Math.min(...xs));
+    const minY = Math.floor(Math.min(...ys));
+    const maxX = Math.ceil(Math.max(...xs));
+    const maxY = Math.ceil(Math.max(...ys));
+    const x = Math.max(0, minX);
+    const y = Math.max(0, minY);
+    const right = Math.min(doc.width, maxX);
+    const bottom = Math.min(doc.height, maxY);
+    return { x, y, w: right - x, h: bottom - y };
   }
 
   _getHandles() {
@@ -1297,8 +1312,9 @@ export class MovePixelsTool extends Tool {
   _cutContent(doc) {
     const layer = doc.activeLayer;
     if (!layer || !layer.visible) return false;
-    doc.saveDrawState('Move');
+    doc.saveStructureState('Move');
     const sel = doc.selection;
+    this._hadSelection = sel.active;
     let sx, sy, sw, sh;
 
     if (sel.active && sel.bounds) {
@@ -1349,6 +1365,7 @@ export class MovePixelsTool extends Tool {
     if (!doc) return;
     // Commit back to the layer the content was cut from, not current active
     const layer = this._sourceLayer || doc.activeLayer;
+    const hadSelection = this._hadSelection;
     if (this._rotation === 0 && this._scaleX === 1 && this._scaleY === 1) {
       const snapped = this._snapCenterForPixelMove(this._tx, this._ty);
       this._tx = snapped.x;
@@ -1368,21 +1385,18 @@ export class MovePixelsTool extends Tool {
     ctx.restore();
     ctx.imageSmoothingEnabled = false;
     // Update selection to AABB of transformed content
-    if (doc.selection.active) {
-      const corners = this._getCorners();
-      const xs = corners.map(c => c.x), ys = corners.map(c => c.y);
-      doc.selection.setRect(
-        Math.floor(Math.min(...xs)), Math.floor(Math.min(...ys)),
-        Math.ceil(Math.max(...xs)) - Math.floor(Math.min(...xs)),
-        Math.ceil(Math.max(...ys)) - Math.floor(Math.min(...ys)));
+    if (hadSelection) {
+      const b = this._getClippedTransformBounds(doc);
+      if (b.w > 0 && b.h > 0) doc.selection.setRect(b.x, b.y, b.w, b.h);
+      else doc.selection.clear();
     }
-    this._buffer = null; this._active = false; this._sourceLayer = null;
+    this._buffer = null; this._active = false; this._sourceLayer = null; this._hadSelection = false;
     bus.emit('canvas:dirty');
   }
 
   cancel() {
     if (!this._active) return;
-    this._active = false; this._buffer = null; this._dragging = false; this._sourceLayer = null;
+    this._active = false; this._buffer = null; this._dragging = false; this._sourceLayer = null; this._hadSelection = false;
     const doc = bus._app?.doc;
     if (doc) doc.undo();
     bus.emit('canvas:dirty');
@@ -1556,17 +1570,10 @@ export class MovePixelsTool extends Tool {
 
   /** Update doc.selection to match the current transform AABB */
   _syncSelection(doc) {
-    if (!doc.selection.active) return;
-    const corners = this._getCorners();
-    const xs = corners.map(c => c.x), ys = corners.map(c => c.y);
-    const minX = Math.floor(Math.min(...xs));
-    const minY = Math.floor(Math.min(...ys));
-    const maxX = Math.ceil(Math.max(...xs));
-    const maxY = Math.ceil(Math.max(...ys));
-    doc.selection.setRect(
-      Math.max(0, minX), Math.max(0, minY),
-      Math.min(doc.width, maxX) - Math.max(0, minX),
-      Math.min(doc.height, maxY) - Math.max(0, minY));
+    if (!this._hadSelection) return;
+    const b = this._getClippedTransformBounds(doc);
+    if (b.w > 0 && b.h > 0) doc.selection.setRect(b.x, b.y, b.w, b.h);
+    else doc.selection.clear();
   }
 
   onPointerUp(doc) {
