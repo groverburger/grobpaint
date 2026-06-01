@@ -1233,6 +1233,13 @@ export class MovePixelsTool extends Tool {
     }));
   }
 
+  _snapCenterForPixelMove(tx, ty) {
+    return {
+      x: Math.round(tx - this._bufferW / 2) + this._bufferW / 2,
+      y: Math.round(ty - this._bufferH / 2) + this._bufferH / 2,
+    };
+  }
+
   _getHandles() {
     const hw = this._bufferW / 2 * this._scaleX;
     const hh = this._bufferH / 2 * this._scaleY;
@@ -1342,6 +1349,12 @@ export class MovePixelsTool extends Tool {
     if (!doc) return;
     // Commit back to the layer the content was cut from, not current active
     const layer = this._sourceLayer || doc.activeLayer;
+    if (this._rotation === 0 && this._scaleX === 1 && this._scaleY === 1) {
+      const snapped = this._snapCenterForPixelMove(this._tx, this._ty);
+      this._tx = snapped.x;
+      this._ty = snapped.y;
+    }
+
     const ctx = layer.ctx;
     const interp = bus._interpolation || 'nearest';
     ctx.imageSmoothingEnabled = interp !== 'nearest';
@@ -1473,8 +1486,9 @@ export class MovePixelsTool extends Tool {
         ox = dist * Math.cos(snap);
         oy = dist * Math.sin(snap);
       }
-      this._tx = Math.round(this._dragStartTx + ox);
-      this._ty = Math.round(this._dragStartTy + oy);
+      const snapped = this._snapCenterForPixelMove(this._dragStartTx + ox, this._dragStartTy + oy);
+      this._tx = snapped.x;
+      this._ty = snapped.y;
     } else if (this._dragMode === 'rotate') {
       const cur = Math.atan2(y - this._ty, x - this._tx);
       this._rotation = this._dragStartRotation + (cur - this._dragStartAngle);
