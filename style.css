@@ -631,6 +631,10 @@ body {
   font-variant-numeric: tabular-nums;
 }
 #status-help { color: var(--text-dim); font-weight: 400; font-style: italic; }
+.hidden { display: none !important; }
+#status-selection {
+  color: var(--accent);
+}
 .status-spacer { flex: 1; }
 .status-grid {
   display: flex;

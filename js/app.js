@@ -45,6 +45,7 @@ class App {
     this._initClipboard();
     this._initGrid();
     this._initZoom();
+    this._initSelectionStatus();
 
     // Eagerly detect server availability so file dialogs work on first click
     this._hasServer();
@@ -526,6 +527,28 @@ class App {
       const t = Math.log(doc.zoom / 0.05) / Math.log(32 / 0.05);
       document.getElementById('zoom-slider').value = Math.round(t * 100);
     }
+  }
+
+  _initSelectionStatus() {
+    this._selectionStatus = document.getElementById('status-selection');
+    const update = () => this._updateSelectionStatus();
+    bus.on('doc:switched', update);
+    bus.on('canvas:dirty', update);
+    bus.on('layers:changed', update);
+    update();
+  }
+
+  _updateSelectionStatus() {
+    const el = this._selectionStatus;
+    if (!el) return;
+    const bounds = this.doc?.selection?.active ? this.doc.selection.bounds : null;
+    if (!bounds) {
+      el.textContent = '';
+      el.classList.add('hidden');
+      return;
+    }
+    el.textContent = `Selection: ${bounds.w} x ${bounds.h}`;
+    el.classList.remove('hidden');
   }
 
   async pasteFromClipboard() {

@@ -517,9 +517,15 @@ export class DocManager {
     bus.on('doc:open-image', (dataUrl, name) => this.openImage(dataUrl, name));
     bus.on('doc:open-project', (data) => this.openProject(data));
 
-    // Auto-save to localStorage on changes
-    bus.on('canvas:dirty', () => this._scheduleSave());
-    bus.on('layers:changed', () => this._scheduleSave());
+    // Auto-save and keep document tab thumbnails in sync with loaded/changed pixels.
+    bus.on('canvas:dirty', () => {
+      this._scheduleSave();
+      this._scheduleTabPreviewRefresh();
+    });
+    bus.on('layers:changed', () => {
+      this._scheduleSave();
+      this.renderTabs();
+    });
   }
 
   get activeDoc() {
@@ -683,6 +689,49 @@ export class DocManager {
       });
 
       tabBar.appendChild(tab);
+    });
+  }
+
+  _scheduleTabPreviewRefresh() {
+    if (this._tabPreviewFrame) return;
+    this._tabPreviewFrame = requestAnimationFrame(() => {
+      this._tabPreviewFrame = null;
+      this._refreshTabPreviews();
+    });
+  }
+
+  _refreshTabPreviews() {
+    const tabBar = document.getElementById('doc-tabs');
+    if (!tabBar) return;
+
+    this.docs.forEach((doc, i) => {
+      const tab = tabBar.querySelector(`.doc-tab[data-index="${i}"]`);
+      if (!tab) return;
+
+      const thumb = tab.querySelector('canvas');
+      if (thumb) {
+        doc.compositeAll();
+        const thumbH = 24;
+        const thumbW = Math.max(8, Math.round(doc.width / doc.height * thumbH));
+        if (thumb.width !== thumbW || thumb.height !== thumbH) {
+          thumb.width = thumbW;
+          thumb.height = thumbH;
+        }
+        const tctx = thumb.getContext('2d');
+        tctx.clearRect(0, 0, thumbW, thumbH);
+        tctx.drawImage(doc.composite, 0, 0, thumbW, thumbH);
+      }
+
+      let dirtyDot = tab.querySelector('.tab-dirty');
+      const close = tab.querySelector('.tab-close');
+      if (doc.dirty && !dirtyDot) {
+        dirtyDot = document.createElement('span');
+        dirtyDot.className = 'tab-dirty';
+        dirtyDot.textContent = '●';
+        tab.insertBefore(dirtyDot, close);
+      } else if (!doc.dirty && dirtyDot) {
+        dirtyDot.remove();
+      }
     });
   }
 
