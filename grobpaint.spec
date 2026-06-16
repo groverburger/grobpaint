@@ -9,8 +9,10 @@ a = Analysis(
     binaries=[],
     datas=[
         (str(ROOT / 'index.html'), '.'),
+        (str(ROOT / 'manifest.json'), '.'),
         (str(ROOT / 'style.css'), '.'),
         (str(ROOT / 'js'), 'js'),
+        (str(ROOT / 'icons'), 'icons'),
     ],
     hiddenimports=['webview'],
     hookspath=[],
@@ -33,7 +35,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
-    icon=None,
+    icon=str(ROOT / 'icons' / 'apple.icns'),
 )
 
 coll = COLLECT(
@@ -50,4 +52,5 @@ app = BUNDLE(
     coll,
     name='GrobPaint.app',
     bundle_identifier='com.grobpaint.app',
+    icon=str(ROOT / 'icons' / 'apple.icns'),
 )

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'grobpaint-v1';
+const CACHE_NAME = 'grobpaint-v2';
 const ASSETS = [
   'index.html',
   'style.css',
@@ -8,6 +8,9 @@ const ASSETS = [
   'js/ui.js',
   'js/app.js',
   'manifest.json',
+  'icons/favicon-64.png',
+  'icons/icon-192.png',
+  'icons/icon-512.png',
 ];
 
 self.addEventListener('install', e => {
